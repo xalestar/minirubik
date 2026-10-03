@@ -221,7 +221,13 @@ face_ok:
     lhu  a4, 0(t0)
     add  t0, s6, a3
     lhu  a5, 0(t0)
-    j    check
+    add  t0, s2, a4             # the pruning tests again, so that the
+    lbu  t0, 0(t0)              # common case, a pruned first turn, needs
+    bltu s7, t0, pruned         # no jump to check
+    add  t0, s3, a5
+    lbu  t0, 0(t0)
+    bltu s7, t0, pruned
+    j    passed
 next_turn:
     addi t4, t4, -1
     add  t0, s5, a4
@@ -235,6 +241,7 @@ check:
     add  t0, s3, a5
     lbu  t0, 0(t0)
     bltu s7, t0, pruned         # ho > rem
+passed:
     or   t0, a4, a5
     beqz t0, found              # only a child with h = 0 can be solved
     sh   a2, 0(s4)              # descend: spill this frame
