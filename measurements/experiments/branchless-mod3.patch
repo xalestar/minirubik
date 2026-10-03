@@ -1,0 +1,15 @@
+--- a/rubik.s
++++ b/rubik.s
+@@ -164,8 +164,10 @@
+     addi t4, t4, -49            # twist t = digit - '1'
+     bgeu t4, t5, parse_done
+     add  a3, a3, t4             # at most 2 + 2: one conditional subtract
+-    bltu a3, t5, sum_reduced
+-    sub  a3, a3, t5
++    addi a3, a3, -3             # branchless: sum - 3,
++    srai t2, a3, 31             # all ones exactly when no reduction
++    andi t2, t2, 3              # was needed, which adds 3 back
++    add  a3, a3, t2
+ sum_reduced:
+     bgeu t1, a6, orient_next    # the 7th twist is implied by the sum
+     slli a4, a1, 1

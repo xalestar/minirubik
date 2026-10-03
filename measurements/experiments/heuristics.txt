@@ -1,0 +1,9 @@
+mean true distance 8.756
+max hp=7 max ho=6
+max(hp,ho)                                   mean_h=5.144 exp_mean=  34439 exp_worst= 106635 gen_mean=  206618 gen_worst=  639792 ref_exp=38998
+PS k=1 S=0x01 (+hp,ho) entries=5103 max=7    mean_h=5.579 exp_mean=  16356 exp_worst=  61912 gen_mean=   98118 gen_worst=  371457 ref_exp=18529
+PS k=2 S=0x41 (+hp,ho) entries=30618 max=8   mean_h=6.174 exp_mean=   7089 exp_worst=  37668 gen_mean=   42515 gen_worst=  225993 ref_exp=11136
+PS k=3 S=0x49 (+hp,ho) entries=153090 max=9  mean_h=7.081 exp_mean=   2007 exp_worst=  25706 gen_mean=   12023 gen_worst=  154230 ref_exp=2820
+PO k=1 S=0x01 (+hp,ho) entries=15120 max=7   mean_h=5.567 exp_mean=  17698 exp_worst=  51437 gen_mean=  106173 gen_worst=  308604 ref_exp=17810
+PO k=2 S=0x09 (+hp,ho) entries=45360 max=8   mean_h=6.104 exp_mean=   8534 exp_worst=  25059 gen_mean=   51185 gen_worst=  150335 ref_exp=7656
+PO k=3 S=0x49 (+hp,ho) entries=136080 max=9  mean_h=6.723 exp_mean=   3811 exp_worst=  16086 gen_mean=   22845 gen_worst=   96510 ref_exp=3377

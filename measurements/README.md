@@ -55,8 +55,10 @@ to solved and has the expected length 11.
 | `sweep-r3.txt` | `b38b0ee` | 3,489,809 | 10,762,227 | `54721631111111` |
 | `sweep-v2.txt` | `80b9446` pattern database | 1,177,899 | 3,455,334 | `41752632313211` |
 | `sweep-v2-nibble.txt` | `experiments/nibble-pattern.patch` on `80b9446` (dropped) | 1,382,642 | 4,056,678 | `41752632313211` |
+| `sweep-r4.txt` | `f881296` orientation test first (final) | 1,150,121 | 3,397,155 | `41752632313211` |
 
-All six sweeps: 2,644 states, 0 failures.
+All seven sweeps: 2,644 states, 0 failures. The final worst case,
+3,397,155, is 6.8% of the 5 x 10^7 limit.
 
 For the nibble experiment, `pattern_dist` in `tables.s` was also repacked two
 entries per byte, the even `oS` in the low nibble, 8 bytes per permutation
@@ -75,23 +77,29 @@ was checked against the unpacked table (gate H4) before the run.
 | gcc -O2, v2 C (`ripes_ref.c` at `637b365`) | 3,095,385 | 1,500 | 119,604 `.rodata` |
 | v2 `80b9446` | 1,054,871 | 1,448 | 121,332 + 392 |
 | v2 nibble (dropped) | 1,238,511 | 1,512 | 80,964 + 392 |
+| gcc -O2, final C (`ripes_ref.c` at `f881296`) | 3,088,700 | 1,508 | 119,604 `.rodata` |
+| r4 `f881296` (final) | 1,048,184 | 1,448 | 121,332 + 392 |
 
 gcc reference: `riscv64-elf-gcc` 16.2.0 (Homebrew; the same compiler as
 `riscv64-unknown-elf-gcc`, different target triple name),
 `-O2 -march=rv32i -mabi=ilp32 -ffreestanding -nostdlib -static`, run on
-Ripes as an ELF. On the worst v2 state `41752632313211` it retires
-10,137,571 instructions against 3,455,334 for `rubik.s`.
+Ripes as an ELF. On the worst state `41752632313211` the final C retires
+10,079,394 instructions against 3,397,155 for `rubik.s` (v2 C: 10,137,571
+against 3,455,334).
 
 ## T7: the test cases on the pipelined models
 
-`make ripes-check RIPES=...` at `80b9446`, three test cases (solved, the
-3-move scramble `24173562322133`, the reference vector) in one run:
+`make ripes-check RIPES=...`, three test cases (solved, the 3-move
+scramble `24173562322133`, the reference vector) in one run:
 
-| Model | Exit | Cycles | iret |
-| :--- | :---: | ---: | ---: |
-| `RV32_ISS` | 0 | 1,056,419 | 1,056,419 |
-| `RV32_5S` | 0 | 1,277,660 | 1,056,418 |
-| `RV32_6S_DUAL` | 0 | 1,253,853 | 1,056,418 |
+| Model | Exit | Cycles | iret | Cycles at `80b9446` |
+| :--- | :---: | ---: | ---: | ---: |
+| `RV32_ISS` | 0 | 1,049,702 | 1,049,702 | 1,056,419 |
+| `RV32_5S` | 0 | 1,287,143 | 1,049,701 | 1,277,660 |
+| `RV32_6S_DUAL` | 0 | 1,260,325 | 1,049,701 | 1,253,853 |
+
+r4 retires 0.6% fewer instructions than `80b9446` but takes 0.7% more
+cycles on `RV32_5S`.
 
 `RV32_ISS` reports one instruction more than the pipelined models. A
 4-instruction test (`addi`, `li a0, 0`, `li a7, 93`, `ecall`, followed by two
@@ -101,3 +109,28 @@ three report 4. So the ISS counts one extra when the halting `ecall` is not
 the last instruction, which is the case in `rubik.s`. Every `RV32_ISS`
 figure here therefore includes that one extra instruction; it is left in,
 since the assignment defines the measure as `--iret` on `RV32_ISS`.
+
+## Smaller experiments
+
+* `experiments/heuristics.c`, output `experiments/heuristics.txt`: IDA*
+  node counts over all distance-11 states for each candidate abstraction,
+  the data behind the choice of heuristic. Run from the repository root:
+  `cc -O2 -w measurements/experiments/heuristics.c -o heuristics && ./heuristics`.
+* Pruning order, mean per distance-11 state with the v2 heuristic (host
+  counters in `ida.c`): pattern test first prunes 37,978 of 51,185
+  children (74.2%) and needs the second lookup 13,207 times; orientation
+  test first prunes 23,619 (46.1%) and needs the second lookup 27,566
+  times. With 6 and 3 RV32I instructions per test, orientation first is
+  cheaper, which r4 confirmed.
+* `experiments/branchless-mod3.patch`: the twist sum in `parse` reduced
+  with `addi`/`srai`/`andi`/`add` instead of a conditional branch. On top
+  of `f881296`:
+
+  | Case | Branch iret | Branchless iret | Branch 5S cycles | Branchless 5S cycles |
+  | :--- | ---: | ---: | ---: | ---: |
+  | `12345671111111` | 551 | 572 | 773 | 780 |
+  | `21345671111111` | 1,048,184 | 1,048,205 | 1,285,087 | 1,285,094 |
+
+  The reduction runs 7 times per query, only in `parse`: the search loop
+  never computes a twist, since orientation arithmetic lives in the
+  tables. The branch version wins on both measures and stays.
