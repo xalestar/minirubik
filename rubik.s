@@ -216,31 +216,47 @@ face_ok:
     bgeu a6, t5, pop
     add  s5, s0, a6
     add  s6, s1, a7
-    li   t4, 2
+# The three turns of the face, unrolled: a pruned child falls through to
+# the next turn with no counter to update or test. t4, the turns left, is
+# set only for a child that passes, since found and the spilled frame need it.
+turn_1:
     add  t0, s5, a2
     lhu  a4, 0(t0)
     add  t0, s6, a3
     lhu  a5, 0(t0)
-    add  t0, s2, a4             # the pruning tests again, so that the
-    lbu  t0, 0(t0)              # common case, a pruned first turn, needs
-    bltu s7, t0, pruned         # no jump to check
+    add  t0, s2, a4
+    lbu  t0, 0(t0)
+    bltu s7, t0, turn_2         # hp > rem; prunes 2/3 of children
     add  t0, s3, a5
     lbu  t0, 0(t0)
-    bltu s7, t0, pruned
+    bltu s7, t0, turn_2         # ho > rem
+    li   t4, 2
     j    passed
-next_turn:
-    addi t4, t4, -1
+turn_2:
     add  t0, s5, a4
     lhu  a4, 0(t0)
     add  t0, s6, a5
     lhu  a5, 0(t0)
-check:
     add  t0, s2, a4
     lbu  t0, 0(t0)
-    bltu s7, t0, pruned         # hp > rem; prunes 2/3 of children
+    bltu s7, t0, turn_3
     add  t0, s3, a5
     lbu  t0, 0(t0)
-    bltu s7, t0, pruned         # ho > rem
+    bltu s7, t0, turn_3
+    li   t4, 1
+    j    passed
+turn_3:
+    add  t0, s5, a4
+    lhu  a4, 0(t0)
+    add  t0, s6, a5
+    lhu  a5, 0(t0)
+    add  t0, s2, a4
+    lbu  t0, 0(t0)
+    bltu s7, t0, next_face
+    add  t0, s3, a5
+    lbu  t0, 0(t0)
+    bltu s7, t0, next_face
+    li   t4, 0
 passed:
     or   t0, a4, a5
     beqz t0, found              # only a child with h = 0 can be solved
@@ -258,9 +274,6 @@ passed:
     mv   a2, a4
     mv   a3, a5
     j    enter
-pruned:
-    bnez t4, next_turn
-    j    next_face
 pop:
     beq  s4, s9, deepen
     addi s4, s4, -16
@@ -275,7 +288,10 @@ pop:
     lhu  t4, 14(s4)
     add  s5, s0, a6
     add  s6, s1, a7
-    j    pruned
+    beqz t4, next_face          # resume after the child just searched
+    addi t0, t4, -1
+    beqz t0, turn_3
+    j    turn_2
 deepen:
     addi s8, s8, 1
     j    iteration
