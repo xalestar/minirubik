@@ -56,6 +56,13 @@ case_loop:
     beqz a2, case_invalid
     sw   a0, 8(sp)              # root, kept for validation
     sw   a1, 12(sp)
+.if RENDER
+    lw   t0, 0(sp)
+    lw   a0, 0(t0)
+    jal  ra, render_init        # draw the scrambled cube
+    lw   a0, 8(sp)
+    lw   a1, 12(sp)
+.endif
     jal  ra, solve
     mv   s0, a0                 # length
     la   a0, msg_arrow
@@ -372,9 +379,11 @@ replay_turn:
     addi t2, t2, -1
     bnez t2, replay_turn
 .if RENDER
-    mv   a0, s5
-    mv   a1, s6
-    jal  ra, render
+    lhu  a0, 8(s2)              # redraw after every move of the answer
+    lhu  a1, 14(s2)
+    li   t0, 3
+    sub  a1, t0, a1
+    jal  ra, render_move
 .endif
     addi s2, s2, 16
     addi s7, s7, -1
