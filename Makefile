@@ -12,9 +12,23 @@ VECTORS := tests/solutions.txt
 INVALID_STATES := 1234567111111 123456711111111 02345671111111 82345671111111 \
 	12345671111110 12345671111114 1234567111111a 11345671111111 12345671111112
 
-.PHONY: all check prove clean indent
+.PHONY: all check gates prove clean indent
 
-all: solver mini
+all: solver mini ida
+
+# gen checks gates H1 and H2 before it writes tables.h.
+tables.h: gen
+	./gen
+
+gen: gen.c solver.c
+	$(CC) $(CFLAGS) $< -o $@
+
+ida: ida.c tables.h
+	$(CC) $(CFLAGS) $< -o $@
+
+gates: gates.c ida.c solver.c tables.h
+	$(CC) $(CFLAGS) $< -o $@
+	./gates
 
 solver: solver.c
 	$(CC) $(CFLAGS) $< -o $@
@@ -94,4 +108,4 @@ endif
 	$(CLANG_FORMAT) -i $(C_SOURCES)
 
 clean:
-	$(RM) solver mini
+	$(RM) solver mini gen ida gates tables.h

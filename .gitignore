@@ -3,3 +3,7 @@
 *.swp
 solver
 mini
+gen
+ida
+gates
+tables.h
