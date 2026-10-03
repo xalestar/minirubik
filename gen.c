@@ -337,6 +337,31 @@ static int check_admissible(const uint8_t *exact)
     return 1;
 }
 
+/* The 2,644 states at distance 11, one input string per line, for the
+ * worst-case sweep on Ripes (ripes-sweep.sh).
+ */
+static int write_deepest(const uint8_t *exact, const char *path)
+{
+    FILE *out = fopen(path, "w");
+    uint32_t count = 0;
+    if (!out)
+        return 0;
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        state_t state;
+        if (exact[rank] != 11)
+            continue;
+        unrank_state(rank, &state);
+        for (uint8_t i = 0; i < CUBIES; ++i)
+            fputc('1' + state.p[i], out);
+        for (uint8_t i = 0; i < CUBIES; ++i)
+            fputc('1' + state.o[i], out);
+        fputc('\n', out);
+        ++count;
+    }
+    printf("%u states at distance 11 written to %s\n", count, path);
+    return fclose(out) == 0 && count == 2644;
+}
+
 static void emit_c_u16(FILE *out, const char *name, const uint16_t *table,
                        uint32_t rows, uint32_t cols)
 {
@@ -467,7 +492,7 @@ int main(void)
         fputs("out of memory\n", stderr);
         return 1;
     }
-    int ok = check_admissible(exact);
+    int ok = check_admissible(exact) && write_deepest(exact, "distance11.txt");
     free(exact);
     if (!ok)
         return 1;

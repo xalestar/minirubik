@@ -1,0 +1,75 @@
+--- a/rubik.s
++++ b/rubik.s
+@@ -242,11 +242,15 @@
+     lhu  t1, 0(t0)              # t0 = root; bound = max(pattern h, orient h)
+     lhu  t2, 4(t0)
+     lhu  t3, 2(t0)
+-    slli t1, t1, 3
+-    srli t2, t2, 7
+-    add  t1, t1, t2
++    slli t1, t1, 2
++    srli t0, t2, 8
++    add  t1, t1, t0
+     add  t1, t1, s2
+     lbu  s8, 0(t1)
++    srli t0, t2, 5
++    andi t0, t0, 4
++    srl  s8, s8, t0
++    andi s8, s8, 15
+     add  t3, t3, s3
+     lbu  t3, 0(t3)
+     bgeu s8, t3, iteration
+@@ -283,11 +287,15 @@
+     lhu  a5, 0(t0)
+     add  t0, a1, t1
+     lhu  t2, 0(t0)
+-    slli t0, a4, 3              # pattern_dist[16 * p + oS]:
+-    srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
++    slli t0, a4, 2              # packed: byte 8p + oS / 2,
++    srli t3, t2, 8              # nibble oS & 1
+     add  t0, t0, t3
+     add  t0, t0, s2
+     lbu  t0, 0(t0)
++    srli t3, t2, 5              # (oS & 1) * 4 = (2c >> 5) & 4
++    andi t3, t3, 4
++    srl  t0, t0, t3
++    andi t0, t0, 15
+     bltu s7, t0, turn_2         # pattern h > rem
+     add  t0, s3, a5
+     lbu  t0, 0(t0)
+@@ -301,11 +309,15 @@
+     lhu  a5, 0(t0)
+     add  t0, a1, t2
+     lhu  t2, 0(t0)
+-    slli t0, a4, 3              # pattern_dist[16 * p + oS]:
+-    srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
++    slli t0, a4, 2              # packed: byte 8p + oS / 2,
++    srli t3, t2, 8              # nibble oS & 1
+     add  t0, t0, t3
+     add  t0, t0, s2
+     lbu  t0, 0(t0)
++    srli t3, t2, 5              # (oS & 1) * 4 = (2c >> 5) & 4
++    andi t3, t3, 4
++    srl  t0, t0, t3
++    andi t0, t0, 15
+     bltu s7, t0, turn_3
+     add  t0, s3, a5
+     lbu  t0, 0(t0)
+@@ -319,11 +331,15 @@
+     lhu  a5, 0(t0)
+     add  t0, a1, t2
+     lhu  t2, 0(t0)
+-    slli t0, a4, 3              # pattern_dist[16 * p + oS]:
+-    srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
++    slli t0, a4, 2              # packed: byte 8p + oS / 2,
++    srli t3, t2, 8              # nibble oS & 1
+     add  t0, t0, t3
+     add  t0, t0, s2
+     lbu  t0, 0(t0)
++    srli t3, t2, 5              # (oS & 1) * 4 = (2c >> 5) & 4
++    andi t3, t3, 4
++    srl  t0, t0, t3
++    andi t0, t0, 15
+     bltu s7, t0, next_face
+     add  t0, s3, a5
+     lbu  t0, 0(t0)

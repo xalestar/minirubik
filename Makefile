@@ -12,7 +12,7 @@ VECTORS := tests/solutions.txt
 INVALID_STATES := 1234567111111 123456711111111 02345671111111 82345671111111 \
 	12345671111110 12345671111114 1234567111111a 11345671111111 12345671111112
 
-.PHONY: all check gates prove clean indent cases.s
+.PHONY: all check gates ripes-check ripes-sweep prove clean indent cases.s
 
 RIPES ?= ripes
 # Test cases for the assembly build, as state:expected-length (-1: unknown).
@@ -21,8 +21,9 @@ CASES ?= 12345671111111:0 24173562322133:3 21345671111111:11
 
 all: solver mini ida
 
-# gen checks gates H1 and H2 before it writes tables.h.
-tables.h: gen
+# gen checks gates H1 and H2 before it writes tables.h, tables.s and the
+# list of distance-11 states.
+tables.h tables.s distance11.txt: gen
 	./gen
 
 gen: gen.c solver.c
@@ -46,6 +47,19 @@ rubik-cli.s: rubik.s asmpp.awk tables.h cases.s
 
 rubik-gui.s: rubik.s asmpp.awk tables.h cases.s render.s
 	awk -v RENDER=1 -f asmpp.awk $< > $@
+
+# T5-T7 on the target: the test cases on the ISS and two pipelined models.
+# Each run validates its own results and exits non-zero on a failure.
+ripes-check: rubik-cli.s
+	@for proc in RV32_ISS RV32_5S RV32_6S_DUAL; do \
+		echo "== $$proc"; \
+		$(RIPES) --mode cli -t asm --src rubik-cli.s --proc $$proc \
+			--iret --cycles || exit 1; \
+	done
+
+# The pass condition: every distance-11 state under 5e7 on RV32_ISS.
+ripes-sweep: tables.h
+	RIPES=$(RIPES) ./ripes-sweep.sh > sweep.txt
 
 gates: gates.c ida.c solver.c tables.h
 	$(CC) $(CFLAGS) $< -o $@
@@ -129,4 +143,5 @@ endif
 	$(CLANG_FORMAT) -i $(C_SOURCES)
 
 clean:
-	$(RM) solver mini gen ida gates tables.h tables.s cases.s rubik-cli.s rubik-gui.s
+	$(RM) solver mini gen ida gates tables.h tables.s cases.s rubik-cli.s rubik-gui.s \
+		distance11.txt sweep.txt

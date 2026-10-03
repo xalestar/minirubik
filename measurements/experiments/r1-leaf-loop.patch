@@ -1,0 +1,43 @@
+--- a/rubik.s
++++ b/rubik.s
+@@ -206,6 +206,7 @@
+ enter:
+     sub  a6, zero, s10          # one face before face 0
+     sub  a7, zero, s11
++    beqz s7, leaf_face          # children at the bound: no lookups needed
+ next_face:
+     add  a6, a6, s10
+     add  a7, a7, s11
+@@ -272,6 +273,32 @@
+ deepen:
+     addi s8, s8, 1
+     j    iteration
++# rem = 0: a child passes only if h = 0, and only solved has h = 0, so test
++# for solved and skip both distance lookups. Such a node never descends, so
++# no pop returns into this loop.
++leaf_face:
++    add  a6, a6, s10
++    add  a7, a7, s11
++    bne  a6, t6, leaf_face_ok
++    add  a6, a6, s10
++    add  a7, a7, s11
++leaf_face_ok:
++    bgeu a6, t5, pop
++    add  s5, s0, a6
++    add  s6, s1, a7
++    li   t4, 3
++    mv   a4, a2
++    mv   a5, a3
++leaf_turn:
++    addi t4, t4, -1
++    add  t0, s5, a4
++    lhu  a4, 0(t0)
++    add  t0, s6, a5
++    lhu  a5, 0(t0)
++    or   t0, a4, a5
++    beqz t0, found
++    bnez t4, leaf_turn
++    j    leaf_face
+ found:
+     sh   a6, 8(s4)              # the last move is still in registers
+     sh   a7, 10(s4)
