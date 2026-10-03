@@ -337,6 +337,27 @@ static int check_admissible(const uint8_t *exact)
     return 1;
 }
 
+/* The number of states at each distance: the BFS levels that establish the
+ * diameter. Level 11 is non-empty and the levels add up to every state.
+ */
+static int print_distribution(const uint8_t *exact)
+{
+    uint32_t level[16] = {0}, total = 0;
+    uint64_t sum = 0;
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        if (exact[rank] > 15)
+            return 0;
+        ++level[exact[rank]];
+        sum += exact[rank];
+    }
+    for (uint8_t d = 0; d < 16 && level[d]; ++d) {
+        total += level[d];
+        printf("distance %2u: %9u states, %9u cumulative\n", d, level[d], total);
+    }
+    printf("mean distance %.4f\n", (double) sum / STATES);
+    return total == STATES && level[11] && !level[12];
+}
+
 /* The 2,644 states at distance 11, one input string per line, for the
  * worst-case sweep on Ripes (ripes-sweep.sh).
  */
@@ -492,7 +513,8 @@ int main(void)
         fputs("out of memory\n", stderr);
         return 1;
     }
-    int ok = check_admissible(exact) && write_deepest(exact, "distance11.txt");
+    int ok = print_distribution(exact) && check_admissible(exact) &&
+             write_deepest(exact, "distance11.txt");
     free(exact);
     if (!ok)
         return 1;
