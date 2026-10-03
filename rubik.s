@@ -283,15 +283,15 @@ turn_1:
     lhu  a5, 0(t0)
     add  t0, a1, t1
     lhu  t2, 0(t0)
+    add  t0, s3, a5
+    lbu  t0, 0(t0)
+    bltu s7, t0, turn_2         # orient h > rem: 3 instructions
     slli t0, a4, 3              # pattern_dist[16 * p + oS]:
     srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
     add  t0, t0, t3
     add  t0, t0, s2
     lbu  t0, 0(t0)
-    bltu s7, t0, turn_2         # pattern h > rem
-    add  t0, s3, a5
-    lbu  t0, 0(t0)
-    bltu s7, t0, turn_2         # orient h > rem
+    bltu s7, t0, turn_2         # pattern h > rem: 6 instructions
     li   t4, 2
     j    passed
 turn_2:
@@ -301,13 +301,13 @@ turn_2:
     lhu  a5, 0(t0)
     add  t0, a1, t2
     lhu  t2, 0(t0)
+    add  t0, s3, a5
+    lbu  t0, 0(t0)
+    bltu s7, t0, turn_3
     slli t0, a4, 3              # pattern_dist[16 * p + oS]:
     srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
     add  t0, t0, t3
     add  t0, t0, s2
-    lbu  t0, 0(t0)
-    bltu s7, t0, turn_3
-    add  t0, s3, a5
     lbu  t0, 0(t0)
     bltu s7, t0, turn_3
     li   t4, 1
@@ -319,13 +319,13 @@ turn_3:
     lhu  a5, 0(t0)
     add  t0, a1, t2
     lhu  t2, 0(t0)
+    add  t0, s3, a5
+    lbu  t0, 0(t0)
+    bltu s7, t0, next_face
     slli t0, a4, 3              # pattern_dist[16 * p + oS]:
     srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
     add  t0, t0, t3
     add  t0, t0, s2
-    lbu  t0, 0(t0)
-    bltu s7, t0, next_face
-    add  t0, s3, a5
     lbu  t0, 0(t0)
     bltu s7, t0, next_face
     li   t4, 0
