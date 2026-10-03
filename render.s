@@ -36,7 +36,6 @@ r_source:    .byte 1, 4, 2, 0, 3, 5, 6,  0, 1, 2, 4, 5, 6, 3,  0, 2, 5, 3, 1, 4,
 r_twist:     .byte 1, 2, 0, 2, 1, 0, 0,  0, 0, 0, 1, 2, 1, 2,  0, 0, 0, 0, 0, 0, 0
 
 .bss
-.align 2
 r_addr:      .zero 96           # LED address of each facelet, slot * 3 + k
 r_cubie:     .zero 8
 r_twists:    .zero 8

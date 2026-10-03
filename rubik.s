@@ -19,6 +19,10 @@
 .equ FRAME, 32                  # bytes per slot in frames
 
 .data
+# No .align anywhere: it means 2^n bytes to GNU as but n bytes to Ripes.
+# Instead every block keeps the next one aligned: cases.s is a multiple of
+# 16 bytes, tables.s of 4, and the names and messages below add up to 68,
+# so the words render.s appends start on a 4-byte boundary.
 .include "cases.s"
 .include "tables.s"
 # Move names, 4 bytes each, indexed by face * 3 + turn.
@@ -32,7 +36,6 @@ msg_fail:    .string "  FAIL\n"
 msg_invalid: .string " -> invalid\n"
 
 .bss
-.align 2
 # One 32-byte slot per depth, 0..11:
 #   0 p   2 o   4 child p   6 child o        (byte offsets)
 #   8 face, as its offset into perm_turn     10 same face into orient_turn

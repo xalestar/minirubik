@@ -19,6 +19,10 @@ function emit(line,    f, a, name, sub_line) {
         return
     }
     if (line ~ /^[ \t]*\.endif([ \t#]|$)/) {
+        if (depth == 0) {
+            print "asmpp: .endif without .if" > "/dev/stderr"
+            exit 1
+        }
         depth--
         return
     }
@@ -27,13 +31,20 @@ function emit(line,    f, a, name, sub_line) {
     if (line ~ /^[ \t]*\.include[ \t]/) {
         split(line, a, "\"")
         f = a[2]
-        while ((getline sub_line < f) > 0)
+        if ((getline sub_line < f) <= 0) {
+            print "asmpp: cannot read " f > "/dev/stderr"
+            exit 1
+        }
+        do
             emit(sub_line)
+        while ((getline sub_line < f) > 0)
         close(f)
         return
     }
     if (line ~ /^[ \t]*\.equ[ \t]/) {
-        split(line, a, /[ \t,]+/)
+        name = line
+        sub(/^[ \t]+/, "", name)
+        split(name, a, /[ \t,]+/)
         if (a[2] in cli)
             line = ".equ " a[2] ", " cli[a[2]]
         else
