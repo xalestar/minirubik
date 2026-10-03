@@ -1,10 +1,11 @@
 # Optimal 2x2x2 solver in RV32I for Ripes: IDA* over factored coordinates.
 #
-# Same algorithm as ida.c. A state is two byte offsets, 2 * permutation rank
-# and 2 * orientation rank, so every table lookup is one add and one load.
-# The three turns of a face are chained, each child from the previous one.
-# The frame being expanded lives in registers; it is spilled to a 16-byte
-# slot in `frames` only when the search descends.
+# Same algorithm as ida.c. A state is three byte offsets, 2 * permutation
+# rank, 2 * orientation rank and 2 * pair code (cubies 0 and 3, see gen.c),
+# so every table lookup is one add and one load. The three turns of a face
+# are chained, each child from the previous one. The frame being expanded
+# lives in registers; it is spilled to a 32-byte slot in `frames` only when
+# the search descends.
 #
 # Preprocess with asmpp.awk (Ripes has no .if or .include):
 #   RENDER=0  CLI build, measured with --iret
@@ -15,6 +16,7 @@
 .equ PERM_FACE, 10080           # bytes per face in perm_turn, 2 * 5040
 .equ ORIENT_FACE, 1458          # bytes per face in orient_turn, 2 * 729
 .equ NO_FACE, 30240             # 3 * PERM_FACE: past the last face
+.equ FRAME, 32                  # bytes per slot in frames
 
 .data
 .include "cases.s"
@@ -31,16 +33,18 @@ msg_invalid: .string " -> invalid\n"
 
 .bss
 .align 2
-# One 16-byte slot per depth, 0..11:
+# One 32-byte slot per depth, 0..11:
 #   0 p   2 o   4 child p   6 child o        (byte offsets)
 #   8 face, as its offset into perm_turn     10 same face into orient_turn
 #  12 parent's face                          14 turns left on this face (2..0)
-frames: .zero 192
+#  16 pair code  18 child pair code          20..31 unused
+frames: .zero 384
+root:   .zero 8                 # p, o, pair code of the state being solved
 
 .text
 # Status bits for the exit code: 1 = a result failed validation, 2 = invalid.
 main:
-    addi sp, sp, -16
+    addi sp, sp, -32
     la   t0, cases
     sw   t0, 0(sp)              # next case
     sw   zero, 4(sp)            # status
@@ -56,12 +60,15 @@ case_loop:
     beqz a2, case_invalid
     sw   a0, 8(sp)              # root, kept for validation
     sw   a1, 12(sp)
+    mv   a2, a3
+    sw   a2, 16(sp)
 .if RENDER
     lw   t0, 0(sp)
     lw   a0, 0(t0)
     jal  ra, render_init        # draw the scrambled cube
     lw   a0, 8(sp)
     lw   a1, 12(sp)
+    lw   a2, 16(sp)
 .endif
     jal  ra, solve
     mv   s0, a0                 # length
@@ -103,12 +110,12 @@ case_next:
     j    case_loop
 finish:
     lw   a0, 4(sp)
-    addi sp, sp, 16
+    addi sp, sp, 32
     li   a7, 93
     ecall
 
 # parse: a0 = "PPPPPPPOOOOOOO" -> a0 = 2 * perm rank, a1 = 2 * orient rank,
-# a2 = 1 if the string is a valid state, else 0.
+# a3 = 2 * pair code, a2 = 1 if the string is a valid state, else 0.
 parse:
     mv   t0, a0
     li   a2, 0
@@ -171,44 +178,86 @@ orient_next:
     bnez t4, parse_done         # longer than 14 characters
     bnez a3, parse_done         # twist sum not 0 mod 3
     slli a1, a1, 1
+    li   t1, 0                  # find cubies 0 and 3, digits '1' and '4'
+pair_scan:
+    add  t4, t0, t1
+    lbu  t5, 0(t4)
+    li   t2, 49
+    bne  t5, t2, pair_not0
+    mv   a5, t1                 # pos0
+    lbu  a6, 7(t4)              # its twist digit
+pair_not0:
+    li   t2, 52
+    bne  t5, t2, pair_not3
+    mv   a7, t1                 # pos3
+    lbu  t3, 7(t4)
+pair_not3:
+    addi t1, t1, 1
+    bltu t1, t6, pair_scan
+    addi a6, a6, -49
+    addi t3, t3, -49
+    slli t2, a6, 1
+    add  t2, t2, a6
+    add  t2, t2, t3             # oS = 3 * twist0 + twist3
+    slli t2, t2, 6
+    slli t4, a5, 3
+    sub  t4, t4, a5             # 7 * pos0
+    add  t2, t2, t4
+    add  t2, t2, a7             # pair code = oS * 64 + 7 * pos0 + pos3
+    slli a3, t2, 1
     li   a2, 1
 parse_done:
     jalr zero, ra, 0
 
-# solve: a0 = 2 * perm rank, a1 = 2 * orient rank -> a0 = solution length.
-# Move k of the solution is (frames[k].face, frames[k].turns left).
+# solve: a0 = 2 * perm rank, a1 = 2 * orient rank, a2 = 2 * pair code
+# -> a0 = solution length. Move k of the solution is
+# (frames[k].face, frames[k].turns left).
 # Registers while searching:
-#   a0 a1 root            a2 a3 node           a4 a5 child
+#   a0 pair_turn          a1 this face's pair_turn
+#   a2 a3 t1 node         a4 a5 t2 child (p, o, pair code)
 #   a6 a7 face offsets    t4 turns left        t6 parent's face
-#   s0 s1 turn tables     s2 s3 dist tables    s4 frame slot
-#   s5 s6 this face's turn tables              s7 rem = bound - depth - 1
-#   s8 bound              s9 frames            s10 s11 face strides
-#   t5 NO_FACE
+#   s0 s1 turn tables     s2 pattern_dist      s3 orient_dist
+#   s4 frame slot         s5 s6 this face's turn tables
+#   s7 rem = bound - depth - 1                 s8 bound
+#   s9 frames             s10 s11 face strides t5 NO_FACE    t3 scratch
 solve:
     or   t0, a0, a1
     bnez t0, solve_setup
     li   a0, 0                  # already solved
     jalr zero, ra, 0
 solve_setup:
+    la   t0, root
+    sh   a0, 0(t0)
+    sh   a1, 2(t0)
+    sh   a2, 4(t0)
     la   s0, perm_turn
     la   s1, orient_turn
-    la   s2, perm_dist
+    la   s2, pattern_dist
     la   s3, orient_dist
+    la   a0, pair_turn
     la   s9, frames
     li   s10, PERM_FACE
     li   s11, ORIENT_FACE
     li   t5, NO_FACE
-    add  t0, s2, a0
-    lbu  s8, 0(t0)
-    add  t0, s3, a1
-    lbu  t1, 0(t0)
-    bgeu s8, t1, iteration
-    mv   s8, t1                 # bound = max(hp, ho) of the root
+    lhu  t1, 0(t0)              # t0 = root; bound = max(pattern h, orient h)
+    lhu  t2, 4(t0)
+    lhu  t3, 2(t0)
+    slli t1, t1, 3
+    srli t2, t2, 7
+    add  t1, t1, t2
+    add  t1, t1, s2
+    lbu  s8, 0(t1)
+    add  t3, t3, s3
+    lbu  t3, 0(t3)
+    bgeu s8, t3, iteration
+    mv   s8, t3
 iteration:
     mv   s4, s9
     addi s7, s8, -1
-    mv   a2, a0
-    mv   a3, a1
+    la   t0, root
+    lhu  a2, 0(t0)
+    lhu  a3, 2(t0)
+    lhu  t1, 4(t0)
     mv   t6, t5                 # the root has no parent face
 enter:
     sub  a6, zero, s10          # one face before face 0
@@ -223,6 +272,7 @@ face_ok:
     bgeu a6, t5, pop
     add  s5, s0, a6
     add  s6, s1, a7
+    add  a1, a0, a7             # pair_turn rows are orient_turn-sized
 # The three turns of the face, unrolled: a pruned child falls through to
 # the next turn with no counter to update or test. t4, the turns left, is
 # set only for a child that passes, since found and the spilled frame need it.
@@ -231,12 +281,17 @@ turn_1:
     lhu  a4, 0(t0)
     add  t0, s6, a3
     lhu  a5, 0(t0)
-    add  t0, s2, a4
+    add  t0, a1, t1
+    lhu  t2, 0(t0)
+    slli t0, a4, 3              # pattern_dist[16 * p + oS]:
+    srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
+    add  t0, t0, t3
+    add  t0, t0, s2
     lbu  t0, 0(t0)
-    bltu s7, t0, turn_2         # hp > rem; prunes 2/3 of children
+    bltu s7, t0, turn_2         # pattern h > rem
     add  t0, s3, a5
     lbu  t0, 0(t0)
-    bltu s7, t0, turn_2         # ho > rem
+    bltu s7, t0, turn_2         # orient h > rem
     li   t4, 2
     j    passed
 turn_2:
@@ -244,7 +299,12 @@ turn_2:
     lhu  a4, 0(t0)
     add  t0, s6, a5
     lhu  a5, 0(t0)
-    add  t0, s2, a4
+    add  t0, a1, t2
+    lhu  t2, 0(t0)
+    slli t0, a4, 3              # pattern_dist[16 * p + oS]:
+    srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
+    add  t0, t0, t3
+    add  t0, t0, s2
     lbu  t0, 0(t0)
     bltu s7, t0, turn_3
     add  t0, s3, a5
@@ -257,7 +317,12 @@ turn_3:
     lhu  a4, 0(t0)
     add  t0, s6, a5
     lhu  a5, 0(t0)
-    add  t0, s2, a4
+    add  t0, a1, t2
+    lhu  t2, 0(t0)
+    slli t0, a4, 3              # pattern_dist[16 * p + oS]:
+    srli t3, t2, 7              # 2p << 3 = 16p, 2c >> 7 = c >> 6 = oS
+    add  t0, t0, t3
+    add  t0, t0, s2
     lbu  t0, 0(t0)
     bltu s7, t0, next_face
     add  t0, s3, a5
@@ -275,15 +340,18 @@ passed:
     sh   a7, 10(s4)
     sh   t6, 12(s4)
     sh   t4, 14(s4)
-    addi s4, s4, 16
+    sh   t1, 16(s4)
+    sh   t2, 18(s4)
+    addi s4, s4, FRAME
     addi s7, s7, -1
     mv   t6, a6
     mv   a2, a4
     mv   a3, a5
+    mv   t1, t2
     j    enter
 pop:
     beq  s4, s9, deepen
-    addi s4, s4, -16
+    addi s4, s4, -FRAME
     addi s7, s7, 1
     lhu  a2, 0(s4)
     lhu  a3, 2(s4)
@@ -293,8 +361,11 @@ pop:
     lhu  a7, 10(s4)
     lhu  t6, 12(s4)
     lhu  t4, 14(s4)
+    lhu  t1, 16(s4)
+    lhu  t2, 18(s4)
     add  s5, s0, a6
     add  s6, s1, a7
+    add  a1, a0, a7
     beqz t4, next_face          # resume after the child just searched
     addi t0, t4, -1
     beqz t0, turn_3
@@ -307,7 +378,7 @@ found:
     sh   a7, 10(s4)
     sh   t4, 14(s4)
     sub  a0, s4, s9
-    srli a0, a0, 4
+    srli a0, a0, 5              # FRAME = 32
     addi a0, a0, 1
     jalr zero, ra, 0
 
@@ -346,7 +417,7 @@ print_move:
     li   a0, 32
     li   a7, 11
     ecall
-    addi s3, s3, 16
+    addi s3, s3, FRAME
     j    print_move
 print_done:
     mv   ra, s1
@@ -385,7 +456,7 @@ replay_turn:
     sub  a1, t0, a1
     jal  ra, render_move
 .endif
-    addi s2, s2, 16
+    addi s2, s2, FRAME
     addi s7, s7, -1
     j    replay_move
 replay_done:
