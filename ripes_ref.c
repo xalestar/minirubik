@@ -40,12 +40,12 @@ static int replay(uint16_t p, uint16_t o, const uint8_t *path, int length)
 void _start(void)
 {
     static const char input[] = STATE;
-    uint16_t p, o;
+    uint16_t p, o, c;
     uint8_t path[MAX_DEPTH];
     int status = 2;
     ecall1(4, (uintptr_t) input);
-    if (parse(input, &p, &o)) {
-        int length = solve(p, o, path);
+    if (parse(input, &p, &o, &c)) {
+        int length = solve(p, o, c, path);
         ecall1(4, (uintptr_t) " -> ");
         for (int i = 0; i < length; ++i) {
             if (i)

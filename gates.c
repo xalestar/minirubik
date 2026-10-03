@@ -1,9 +1,10 @@
 /* Host gates for ida.c, checked against the exact BFS table of solver.c.
  *
  * For every one of the 3,674,160 states: ida.c's parser agrees with
- * rank_state, the search returns a path whose length equals the exact
- * distance (H3), and that path, applied by solver.c's own apply_move rather
- * than through the generated tables, reaches solved. Also reports operation
+ * rank_state and with the pair code read off the cube arrays, the search
+ * returns a path whose length equals the exact distance (H3), and that path,
+ * applied by solver.c's own apply_move rather than through the generated
+ * tables, reaches solved. Also reports operation
  * counts over the distance-11 states for the stage 3 argument.
  */
 #define main solver_main
@@ -13,6 +14,20 @@
 #define COUNT_OPS
 #include "ida.c"
 #include <time.h>
+
+/* The pair code computed from the cube arrays, independently of parse. */
+static uint16_t pair_code(const state_t *state)
+{
+    int pos0 = 0, pos3 = 0;
+    for (int i = 0; i < CUBIES; ++i) {
+        if (state->p[i] == 0)
+            pos0 = i;
+        if (state->p[i] == 3)
+            pos3 = i;
+    }
+    return (uint16_t) ((3 * state->o[pos0] + state->o[pos3]) * 64 + 7 * pos0 +
+                       pos3);
+}
 
 /* Distance by walking the baseline's move-toward-solved table home. */
 static uint8_t exact_distance(const uint8_t *table, state_t state)
@@ -39,7 +54,7 @@ int main(void)
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         state_t state;
         char text[2 * CUBIES + 1];
-        uint16_t p, o;
+        uint16_t p, o, c;
         uint8_t path[MAX_DEPTH];
         unrank_state(rank, &state);
         for (int i = 0; i < CUBIES; ++i) {
@@ -47,13 +62,14 @@ int main(void)
             text[CUBIES + i] = (char) ('1' + state.o[i]);
         }
         text[2 * CUBIES] = '\0';
-        if (!parse(text, &p, &o) || (uint32_t) p * ORIENTATIONS + o != rank) {
-            fprintf(stderr, "parse disagrees with rank_state at %s\n", text);
+        if (!parse(text, &p, &o, &c) ||
+            (uint32_t) p * ORIENTATIONS + o != rank || c != pair_code(&state)) {
+            fprintf(stderr, "parse disagrees with the cube at %s\n", text);
             return 1;
         }
         uint8_t d = exact_distance(table, state);
         generated = 0;
-        int length = solve(p, o, path);
+        int length = solve(p, o, c, path);
         if (length != d) {
             fprintf(stderr, "H3 failed at %s: length %d, distance %u\n", text,
                     length, d);
