@@ -7,3 +7,7 @@ gen
 ida
 gates
 tables.h
+tables.s
+cases.s
+rubik-cli.s
+rubik-gui.s
