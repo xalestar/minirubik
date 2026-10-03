@@ -49,8 +49,8 @@ int main(void)
         return 1;
     }
     clock_t start = clock();
-    uint64_t worst = 0, total = 0;
-    uint32_t deepest = 0;
+    uint64_t worst = 0, total = 0, first = 0, second = 0;
+    uint32_t deepest = 0, skipping = 0, skipping11 = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         state_t state;
         char text[2 * CUBIES + 1];
@@ -68,8 +68,10 @@ int main(void)
             return 1;
         }
         uint8_t d = exact_distance(table, state);
-        generated = 0;
+        generated = pruned_first = pruned_second = skipped_bounds = 0;
         int length = solve(p, o, c, path);
+        skipping += skipped_bounds != 0;
+        skipping11 += skipped_bounds != 0 && d == 11;
         if (length != d) {
             fprintf(stderr, "H3 failed at %s: length %d, distance %u\n", text,
                     length, d);
@@ -84,6 +86,8 @@ int main(void)
         if (d == 11) {
             ++deepest;
             total += generated;
+            first += pruned_first;
+            second += pruned_second;
             if (generated > worst)
                 worst = generated;
         }
@@ -93,5 +97,12 @@ int main(void)
            (double) (clock() - start) / CLOCKS_PER_SEC);
     printf("distance 11: %u states, generated children mean %.0f, worst %llu\n",
            deepest, (double) total / deepest, (unsigned long long) worst);
+    printf("distance 11, mean per state: first test prunes %.0f (%.1f%%), "
+           "second lookup %.0f times, second test prunes %.0f\n",
+           (double) first / deepest, 100.0 * first / total,
+           (double) (total - first) / deepest, (double) second / deepest);
+    printf("a jump to the smallest pruned f would skip a bound in %u states "
+           "(%u at distance 11)\n",
+           skipping, skipping11);
     return 0;
 }

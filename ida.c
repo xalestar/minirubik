@@ -20,12 +20,30 @@ typedef struct {
     uint8_t turn;    /* quarter turns applied: 0 = quarter, 1 = half, 2 = ' */
 } frame_t;
 
-/* Counters for the operation-count argument; compiled out on the target. */
+/* Counters for the operation-count argument; compiled out on the target.
+ * pruned_first/second: children cut by the first or the second test.
+ * skipped_bounds: bound values an IDA* that jumped to the smallest pruned
+ * f would have skipped (this one steps by 1).
+ */
 #ifdef COUNT_OPS
-static uint64_t generated, expanded;
+static uint64_t generated, expanded, pruned_first, pruned_second;
+static uint64_t skipped_bounds;
+static unsigned min_pruned_f;
 #define COUNT(x) (++(x))
 #else
 #define COUNT(x) ((void) 0)
+#endif
+
+/* The cheaper test first: orient_dist prunes less often than pattern_dist
+ * (46% against 74% of children) but costs 3 RV32I instructions against 6.
+ * PATTERN_FIRST is the other order, for the host measurement only.
+ */
+#ifdef PATTERN_FIRST
+#define FIRST_H(f) pattern_h((f)->cp, (f)->cc)
+#define SECOND_H(f) orient_dist[(f)->co]
+#else
+#define FIRST_H(f) orient_dist[(f)->co]
+#define SECOND_H(f) pattern_h((f)->cp, (f)->cc)
 #endif
 
 /* Parse "PPPPPPPOOOOOOO" into p, o and the pair code; returns 0 on invalid
@@ -35,6 +53,8 @@ static int parse(const char *s, uint16_t *p, uint16_t *o, uint16_t *pair)
 {
     uint8_t seen = 0, sum = 0, pos0 = 0, pos3 = 0;
     uint32_t prank = 0, orank = 0;
+    /* all seven cubie digits first, so the ranking below never reads past
+     * the end of a short string */
     for (int i = 0; i < CORNERS; ++i) {
         uint8_t c = (uint8_t) (s[i] - '1');
         if (c >= CORNERS || seen & 1U << c)
@@ -44,6 +64,9 @@ static int parse(const char *s, uint16_t *p, uint16_t *o, uint16_t *pair)
             pos0 = (uint8_t) i;
         if (c == 3)
             pos3 = (uint8_t) i;
+    }
+    for (int i = 0; i < CORNERS; ++i) {
+        uint8_t c = (uint8_t) (s[i] - '1');
         uint8_t smaller = 0;
         for (int j = i + 1; j < CORNERS; ++j)
             smaller += (uint8_t) (s[j] - '1') < c;
@@ -80,6 +103,16 @@ static uint8_t pattern_h(uint16_t p, uint16_t c)
     return pattern_dist[p][c >> 6];
 }
 
+#ifdef COUNT_OPS
+static void note_pruned(const frame_t *f, int depth)
+{
+    unsigned a = orient_dist[f->co], b = pattern_h(f->cp, f->cc);
+    unsigned fv = (unsigned) depth + 1 + (a > b ? a : b);
+    if (fv < min_pruned_f)
+        min_pruned_f = fv;
+}
+#endif
+
 /* Writes moves as face * 3 + turn into path; returns the solution length. */
 static int solve(uint16_t p, uint16_t o, uint16_t c, uint8_t *path)
 {
@@ -88,7 +121,16 @@ static int solve(uint16_t p, uint16_t o, uint16_t c, uint8_t *path)
         return 0;
     uint8_t bound = pattern_h(p, c) > orient_dist[o] ? pattern_h(p, c)
                                                      : orient_dist[o];
+#ifdef COUNT_OPS
+    int searched = 0; /* a bound has been tried and failed */
+#endif
     for (;; ++bound) {
+#ifdef COUNT_OPS
+        if (searched && min_pruned_f > bound)
+            skipped_bounds += min_pruned_f - bound;
+        searched = 1;
+        min_pruned_f = UINT8_MAX;
+#endif
         int depth = 0;
         stack[0].p = p;
         stack[0].o = o;
@@ -127,11 +169,20 @@ static int solve(uint16_t p, uint16_t o, uint16_t c, uint8_t *path)
             }
             /* children of f sit at depth + 1; descend only if they fit */
             uint8_t rem = (uint8_t) (bound - depth - 1);
-            /* orient_dist first: it prunes less often than pattern_dist
-             * (46% against 74% of children) but costs 3 RV32I instructions
-             * against 6, so it is the cheaper test to run first */
-            if (orient_dist[f->co] > rem || pattern_h(f->cp, f->cc) > rem)
+            if (FIRST_H(f) > rem) {
+                COUNT(pruned_first);
+#ifdef COUNT_OPS
+                note_pruned(f, depth);
+#endif
                 continue;
+            }
+            if (SECOND_H(f) > rem) {
+                COUNT(pruned_second);
+#ifdef COUNT_OPS
+                note_pruned(f, depth);
+#endif
+                continue;
+            }
             COUNT(expanded);
             frame_t *next = &stack[++depth];
             next->p = f->cp;
