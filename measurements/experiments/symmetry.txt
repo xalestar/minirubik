@@ -1,0 +1,16 @@
+model fits solver.c: twist sign +1, turn syms R=26 B=42 D=33
+all 3,674,160 x 3 quarter turns agree with solver.c
+symmetries: 48 total, 6 fix the FUL corner (3 rotations)
+distance mismatches over 49 maps x 3674160 states: 0
+classes: 3 rotations 1224828 | 6 fixing the corner 612630 | all 48 77802 | 48 + inverse 40296 | no symmetry 3674160
+4-bit exact table over classes: 48 -> 38901 B, 48+inv -> 20148 B
+maps (of 48 syms + inverse) that act on the pattern_dist index: 2 (identity included); entries 45360 -> 22752
+   acting maps: 0(fix) 32
+v2 max(PD,ho)              mean_h=6.104 exact= 115481 | d11 gen mean   51185 worst  150335 | exp mean   8534 worst  25059 | ref gen   45909 exp   7656
+2 rotations, PD only       mean_h=6.597 exact= 202565 | d11 gen mean   13387 worst   39719 | exp mean   2234 worst   6622 | ref gen   13875 exp   2317
+2 rotations, PD and ho     mean_h=6.601 exact= 202689 | d11 gen mean   12805 worst   38460 | exp mean   2137 worst   6413 | ref gen   12783 exp   2135
+6 fixing the corner        mean_h=6.777 exact= 255042 | d11 gen mean    8534 worst   26198 | exp mean   1426 worst   4369 | ref gen    8181 exp   1368
+all 48                     mean_h=7.065 exact= 377994 | d11 gen mean    4028 worst   11408 | exp mean    675 worst   1904 | ref gen    4035 exp    677
+48 + inverse               mean_h=7.112 exact= 405498 | d11 gen mean    3466 worst    9680 | exp mean    581 worst   1616 | ref gen    3489 exp    586
+PO k=3 {0,3,6}: 136080 entries
+PO k=3 (no sym)            mean_h=6.723 exact= 323654 | d11 gen mean   22845 worst   96510 | exp mean   3811 worst  16086 | ref gen   20235 exp   3377

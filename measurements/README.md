@@ -63,10 +63,13 @@ to solved and has the expected length 11.
 | `sweep-r3.txt` | `b38b0ee` | 3,489,809 | 10,762,227 | `54721631111111` |
 | `sweep-v2.txt` | `80b9446` pattern database | 1,177,899 | 3,455,334 | `41752632313211` |
 | `sweep-v2-nibble.txt` | `experiments/nibble-pattern.patch` on `80b9446` (dropped) | 1,382,642 | 4,056,678 | `41752632313211` |
-| `sweep-r4.txt` | `f881296` orientation test first (final) | 1,150,121 | 3,397,155 | `41752632313211` |
+| `sweep-r4.txt` | `f881296` orientation test first | 1,150,121 | 3,397,155 | `41752632313211` |
+| `sweep-v3.txt` | `c11831f` pattern database through two rotations (final) | 458,634 | 1,345,083 | `21354672313211` |
 
-All seven sweeps: 2,644 states, 0 failures. The final worst case,
-3,397,155, is 6.8% of the 5 x 10^7 limit.
+All eight sweeps: 2,644 states, 0 failures. The final worst case,
+1,345,083, is 2.7% of the 5 x 10^7 limit. No state is slower in
+`sweep-v3.txt` than in `sweep-r4.txt`; the ratio per state runs from 1.70
+to 3.81.
 
 For the nibble experiment, `pattern_dist` was also repacked two entries per
 byte, the even `oS` in the low nibble, 8 bytes per permutation (40,320 bytes
@@ -76,8 +79,8 @@ odd (the H4 method). Its docstring gives the commands that reproduce the
 1,238,511 below.
 
 Since `74376ec` the sweep script sorts its output; the committed sweeps
-are in completion order, and `sort` makes them comparable. A fresh sweep
-of the final code is identical to `sweep-r4.txt` after sorting.
+up to `sweep-r4.txt` are in completion order, and `sort` makes them
+comparable; `sweep-v3.txt` is sorted.
 
 ## Reference vector `21345671111111` and code size
 
@@ -94,11 +97,14 @@ of the final code is identical to `sweep-r4.txt` after sorting.
 | gcc -O2, C at `f881296` | 3,088,700 | 1,508 | 119,604 `.rodata` |
 | r4 `f881296` | 1,048,184 | 1,448 | 121,332 + 392 |
 | gcc -O2, final C (`4867974`, parse validates first) | 3,088,745 | 1,540 | 119,604 `.rodata` |
-| final `rubik.s` (unchanged since `f881296`) | 1,048,184 | 1,448 | 121,332 + 392 |
-| final GUI build (`rubik-gui.s`, renderer in) | | 2,172 | 121,470 + 520 |
+| `rubik.s` at `34a5e0f` (unchanged since `f881296`) | 1,048,184 | 1,448 | 121,332 + 392 |
+| GUI build at `34a5e0f` (`rubik-gui.s`, renderer in) | | 2,172 | 121,470 + 520 |
+| gcc -O2, v3 C (`ripes_ref.c` at `1eb4166`) | 1,461,106 | 2,480 | 119,604 `.rodata` + 19 `.sdata` |
+| v3 `c11831f`, final `rubik.s` | 464,819 | 2,316 | 121,348 + 520 |
+| final GUI build (`rubik-gui.s`, renderer in) | | 3,024 | 121,486 + 648 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
-but its static data, 121,990 bytes, is also within the 131,072 limit.
+but its static data, 122,134 bytes, is also within the 131,072 limit.
 
 gcc reference: `riscv64-elf-gcc` 16.2.0 (Homebrew; the same compiler as
 `riscv64-unknown-elf-gcc`, different target triple name),
@@ -108,21 +114,29 @@ Ripes as an ELF. On the worst state `41752632313211` the final C retires
 10,079,394; v2 C: 10,137,571 against 3,455,334). These gcc figures are for
 that one state, the worst state of the assembly; the gcc build was not
 swept over all 2,644 states (the reviewer's sweep of the `f881296` build
-found the same worst state).
+found the same worst state). The v3 C retires 4,232,771 instructions on
+`21354672313211`, the worst state of the v3 assembly, against 1,345,083,
+and 3,624,686 on `41752632313211`.
+
+From v3 on, `ripes_ref.c` loads `gp` first: gcc places the three small
+`sym_*` tables in `.sdata`, the linker reaches them through `gp`, and
+Ripes starts at `_start` with `gp` not pointing there. Without it the
+program does not terminate.
 
 ## T7: the test cases on the pipelined models
 
 `make ripes-check RIPES=...`, three test cases (solved, the 3-move
 scramble `24173562322133`, the reference vector) in one run:
 
-| Model | Exit | Cycles | iret | Cycles at `80b9446` |
-| :--- | :---: | ---: | ---: | ---: |
-| `RV32_ISS` | 0 | 1,049,702 | 1,049,702 | 1,056,419 |
-| `RV32_5S` | 0 | 1,287,143 | 1,049,701 | 1,277,660 |
-| `RV32_6S_DUAL` | 0 | 1,260,325 | 1,049,701 | 1,253,853 |
+| Model | Exit | Cycles | iret | Cycles at `f881296` | Cycles at `80b9446` |
+| :--- | :---: | ---: | ---: | ---: | ---: |
+| `RV32_ISS` | 0 | 469,171 | 469,171 | 1,049,702 | 1,056,419 |
+| `RV32_5S` | 0 | 579,884 | 469,170 | 1,287,143 | 1,277,660 |
+| `RV32_6S_DUAL` | 0 | 590,103 | 469,170 | 1,260,325 | 1,253,853 |
 
-r4 retires 0.6% fewer instructions than `80b9446` but takes 0.7% more
-cycles on `RV32_5S`.
+r4 (`f881296`) retires 0.6% fewer instructions than `80b9446` but takes
+0.7% more cycles on `RV32_5S`. With v3, `RV32_6S_DUAL` takes more cycles
+than `RV32_5S`, the reverse of r4.
 
 `RV32_ISS` reports one instruction more than the pipelined models. A
 4-instruction test (`addi`, `li a0, 0`, `li a7, 93`, `ecall`, followed by two
@@ -140,15 +154,40 @@ since the assignment defines the measure as `--iret` on `RV32_ISS`.
   the data behind the choice of heuristic. Run from the repository root:
   `cc -O2 -w measurements/experiments/heuristics.c -o heuristics && ./heuristics`.
 * Pruning order, mean per distance-11 state with the v2 heuristic, printed
-  by `make gates` (and by a `gates` built with `-DPATTERN_FIRST` for the
-  other order): pattern test first prunes 37,978 of 51,185 children
-  (74.2%) and needs the second lookup 13,207 times; orientation test first
-  prunes 23,619 (46.1%) and needs the second lookup 27,566 times. With 6
-  and 3 RV32I instructions per test, orientation first is cheaper, which r4
-  confirmed.
+  by `make gates` at `34a5e0f` (and by a `gates` built with
+  `-DPATTERN_FIRST` for the other order): pattern test first prunes 37,978
+  of 51,185 children (74.2%) and needs the second lookup 13,207 times;
+  orientation test first prunes 23,619 (46.1%) and needs the second lookup
+  27,566 times. With 6 and 3 RV32I instructions per test, orientation first
+  is cheaper, which r4 confirmed.
+* The same with the v3 heuristic, printed by `make gates` (and by a `gates`
+  built with `-DORIENT_FIRST`): of 13,387 children, pattern test first
+  prunes 7,811 (58.3%) and needs the second lookup 5,576 times; orientation
+  test first prunes 2,201 (16.4%) and needs it 11,185 times. Pattern first
+  is now cheaper, 6 + 0.42 x 3 = 7.25 instructions a child against
+  3 + 0.84 x 6 = 8.01; only that order was built in assembly. After both
+  tests, the lookup through one rotation prunes 1,867 children and through
+  the other 920, with 16,323 quarter turns of rotated coordinates, and
+  2,234 nodes are expanded. H3 over all states takes 29.7 s.
 * Bound step, also printed by `make gates`: an IDA* that raised the bound
   to the smallest pruned f instead of by 1 would skip one bound value in
   4,010 of the 3,674,160 states, and in none of the 2,644 at distance 11.
+  With the v3 heuristic: 20,955 states, 15 of them at distance 11.
+* `experiments/symmetry.c`, output `experiments/symmetry.txt`: the 48
+  symmetries of the cube applied to every state, the data behind v3. Each
+  of them, and inversion, preserves the distance on all 3,674,160 states.
+  The states fall into 1,224,828 classes under the 3 rotations about the
+  fixed corner, 612,630 under the 6 symmetries that fix it, 77,802 under
+  all 48 and 40,296 with inversion as well. Only one map besides the
+  identity acts on the index of `pattern_dist`, so the table itself can
+  shrink to 22,752 entries at most. Taking the maximum of the heuristic
+  over the images instead, generated children per distance-11 state, mean
+  and worst: 51,185 and 150,335 without symmetry; 13,387 and 39,719 with
+  the two rotations (v3); 8,534 and 26,198 with all 6; 4,028 and 11,408
+  with all 48; against 22,845 and 96,510 for the three-cubie pattern
+  database, which does not fit. Only the two rotations were built: they
+  map each face turn to a face turn, so the rotated coordinates advance
+  through the existing turn tables.
 * The r2 prediction used v1's pass rate: 34,439 expanded of 206,618
   generated children per distance-11 state (`experiments/heuristics.txt`),
   so about 83% of children are pruned.
