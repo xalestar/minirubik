@@ -6,11 +6,16 @@
  * gates H1 (admissibility) and H2 (population) before writing anything.
  * Output: tables.h for the C build, tables.s for the assembly build.
  *
- * Heuristic: h = max(pattern_dist, orient_dist).
+ * Heuristic: h = max(pattern_dist, orient_dist), with pattern_dist looked
+ * up for the state and for its two rotations about the fixed corner.
  *   orient_dist[o]          exact distance of the orientation alone (729)
  *   pattern_dist[p][oS]     exact distance of the abstraction that keeps the
  *                           whole permutation p and the twists of cubies 0
  *                           and 3, oS = 3 * twist0 + twist3 (5040 x 9)
+ * A rotation of the cube about the diagonal through the fixed corner maps
+ * states to states at the same distance, so the pattern distance of the
+ * rotated state is a lower bound too; it follows the twists of another two
+ * cubies with the same table (sym_pi, sym_tau, sym_face below).
  * The search tracks oS through a small coordinate c of its own:
  *   c = oS * 64 + 7 * pos0 + pos3   (pos = where cubie 0 / 3 sits; 576 codes)
  * so oS = c >> 6 and the pattern index needs no multiply.
@@ -33,6 +38,25 @@ static uint8_t orient_dist[ORIENTATIONS];
 static uint8_t pattern_dist[PERMUTATIONS][PATTERN_ROW];
 /* lehmer_weight[i][k] = k * (6 - i)!, the factoradic digit weights */
 static uint16_t lehmer_weight[CUBIES][CUBIES];
+/* The 120-degree rotation about the diagonal through the fixed corner, as a
+ * map on states: the cubie at position i goes to position sym_pi[i] and is
+ * cubie sym_pi[cubie] there. Its twist changes by sym_tau[i] - sym_tau[cubie],
+ * because the rotation moves the U/D faces twists are measured against. A
+ * quarter turn of face f becomes a quarter turn of face sym_face[f].
+ */
+static const uint8_t sym_pi[CUBIES] = {2, 5, 6, 1, 4, 3, 0};
+static const uint8_t sym_tau[CUBIES] = {0, 1, 0, 1, 0, 1, 0};
+static const uint8_t sym_face[3] = {2, 0, 1};
+
+static void rotate_state(const state_t *state, state_t *rotated)
+{
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        uint8_t cubie = state->p[i];
+        rotated->p[sym_pi[i]] = sym_pi[cubie];
+        rotated->o[sym_pi[i]] =
+            (uint8_t) ((state->o[i] + sym_tau[i] + 3U - sym_tau[cubie]) % 3U);
+    }
+}
 
 static int pair_valid(uint16_t c)
 {
@@ -314,17 +338,65 @@ static int check_lehmer(void)
     return 1;
 }
 
-/* H1: max(pattern_dist, orient_dist) never exceeds the exact distance. */
+/* H2 for the rotation: it maps every state to a valid state, the solved
+ * state to itself, three applications are the identity, and it commutes
+ * with the moves: rotating after a quarter turn of face f equals a quarter
+ * turn of sym_face[f] after rotating. Together these make it a symmetry of
+ * the move graph that fixes solved, so it preserves the distance.
+ */
+static int check_rotation(void)
+{
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        state_t state, once, twice, thrice;
+        unrank_state(rank, &state);
+        rotate_state(&state, &once);
+        rotate_state(&once, &twice);
+        rotate_state(&twice, &thrice);
+        uint32_t image = valid(&once) ? rank_state(&once) : STATES;
+        int ok = image < STATES && (rank != 0 || image == 0) &&
+                 !memcmp(&state, &thrice, sizeof state);
+        for (uint8_t face = 0; ok && face < 3; ++face) {
+            state_t turned = quarter_turn(state, face), rotated;
+            uint8_t to = sym_face[face];
+            rotate_state(&turned, &rotated);
+            ok = rank_state(&rotated) ==
+                 (uint32_t) perm_turn[to][image / ORIENTATIONS] * ORIENTATIONS +
+                     orient_turn[to][image % ORIENTATIONS];
+        }
+        if (!ok) {
+            fprintf(stderr, "H2 failed for the rotation at rank %u\n", rank);
+            return 0;
+        }
+    }
+    printf("H2 rotation: order 3, fixes solved, commutes with the 3 quarter "
+           "turns on %u states\n",
+           STATES);
+    return 1;
+}
+
+static uint8_t pattern_of(const state_t *state)
+{
+    state_t copy = *state;
+    return pattern_dist[rank_state(&copy) / ORIENTATIONS][pair_of(state) / 64];
+}
+
+/* H1: the heuristic, max(orient_dist, pattern_dist of the state and of its
+ * two rotations), never exceeds the exact distance.
+ */
 static int check_admissible(const uint8_t *exact)
 {
     uint32_t tight = 0;
     uint64_t sum = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
-        state_t state;
+        state_t state, once, twice;
         unrank_state(rank, &state);
-        uint8_t hp = pattern_dist[rank / ORIENTATIONS][pair_of(&state) / 64];
-        uint8_t ho = orient_dist[rank % ORIENTATIONS];
-        uint8_t h = hp > ho ? hp : ho;
+        rotate_state(&state, &once);
+        rotate_state(&once, &twice);
+        uint8_t h = orient_dist[rank % ORIENTATIONS];
+        const state_t *view[] = {&state, &once, &twice};
+        for (uint8_t k = 0; k < 3; ++k)
+            if (pattern_of(view[k]) > h)
+                h = pattern_of(view[k]);
         if (exact[rank] == UINT8_MAX || h > exact[rank]) {
             fprintf(stderr, "H1 failed at rank %u: h %u, d %u\n", rank, h,
                     exact[rank]);
@@ -429,6 +501,20 @@ static int write_header(const char *path)
         fprintf(out, "%s%u", i ? "," : "", orient_dist[i]);
     fputs("};\n", out);
     emit_c_u16(out, "lehmer_weight", &lehmer_weight[0][0], CUBIES, CUBIES);
+    const struct {
+        const char *name;
+        const uint8_t *table;
+        uint32_t size;
+    } small[] = {{"sym_pi", sym_pi, CUBIES},
+                 {"sym_tau", sym_tau, CUBIES},
+                 {"sym_face", sym_face, 3}};
+    for (uint32_t k = 0; k < 3; ++k) {
+        fprintf(out, "static const uint8_t %s[%u] = {", small[k].name,
+                small[k].size);
+        for (uint32_t i = 0; i < small[k].size; ++i)
+            fprintf(out, "%s%u", i ? "," : "", small[k].table[i]);
+        fputs("};\n", out);
+    }
     return fclose(out) == 0;
 }
 
@@ -492,6 +578,14 @@ static int write_asm(const char *path)
               PERMUTATIONS * PATTERN_ROW, 1);
     fputs("# [2 * rank] -> distance\n", out);
     emit_s_u8(out, "orient_dist", orient_dist, ORIENTATIONS, 2);
+    fputs("# the rotation about the fixed corner: [i] -> position and cubie\n"
+          "# map, twist offset; 7 bytes each, padded to 8\n",
+          out);
+    uint8_t padded[CUBIES + 1] = {0};
+    memcpy(padded, sym_pi, CUBIES);
+    emit_s_u8(out, "sym_pi", padded, CUBIES + 1, 1);
+    memcpy(padded, sym_tau, CUBIES);
+    emit_s_u8(out, "sym_tau", padded, CUBIES + 1, 1);
     return fclose(out) == 0;
 }
 
@@ -501,14 +595,15 @@ static int write_asm(const char *path)
  */
 static int check_asm(const char *path)
 {
-    static const char *const label[] = {"perm_turn",     "orient_turn",
-                                        "pair_turn",     "lehmer_weight",
-                                        "pattern_dist",  "orient_dist"};
-    static const uint32_t count[] = {3 * PERMUTATIONS, 3 * ORIENTATIONS,
-                                     3 * ORIENTATIONS, CUBIES * CUBIES,
-                                     PERMUTATIONS * PATTERN_ROW,
-                                     2 * ORIENTATIONS};
-    uint32_t seen[6] = {0};
+    enum { TABLES = 8 };
+    static const char *const label[TABLES] = {
+        "perm_turn",    "orient_turn", "pair_turn", "lehmer_weight",
+        "pattern_dist", "orient_dist", "sym_pi",    "sym_tau"};
+    static const uint32_t count[TABLES] = {
+        3 * PERMUTATIONS,           3 * ORIENTATIONS, 3 * ORIENTATIONS,
+        CUBIES * CUBIES,            PERMUTATIONS * PATTERN_ROW,
+        2 * ORIENTATIONS,           CUBIES + 1,       CUBIES + 1};
+    uint32_t seen[TABLES] = {0};
     int table = -1;
     char line[512];
     FILE *in = fopen(path, "r");
@@ -516,7 +611,7 @@ static int check_asm(const char *path)
         return 0;
     while (fgets(line, sizeof line, in)) {
         char *t = line;
-        for (int k = 0; k < 6; ++k)
+        for (int k = 0; k < TABLES; ++k)
             if (!strncmp(line, label[k], strlen(label[k])) &&
                 line[strlen(label[k])] == ':')
                 table = k;
@@ -554,6 +649,12 @@ static int check_asm(const char *path)
             case 5:
                 expect = i % 2 ? 0 : orient_dist[i / 2];
                 break;
+            case 6:
+                expect = i < CUBIES ? sym_pi[i] : 0;
+                break;
+            case 7:
+                expect = i < CUBIES ? sym_tau[i] : 0;
+                break;
             }
             if (i >= count[table] || v != (long) expect) {
                 fprintf(stderr, "H2 failed for %s in %s at %u\n",
@@ -564,7 +665,7 @@ static int check_asm(const char *path)
         }
     }
     fclose(in);
-    for (int k = 0; k < 6; ++k)
+    for (int k = 0; k < TABLES; ++k)
         if (seen[k] != count[k]) {
             fprintf(stderr, "H2 failed for %s in %s: %u values\n", label[k],
                     path, seen[k]);
@@ -587,7 +688,7 @@ int main(void)
         !check_turns("pair_turn", &pair_turn[0][0], PAIR_CODES, pair_valid,
                      PAIR_STATES) ||
         !check_lehmer() || !check_orient_dist(orient_reached) ||
-        !check_pattern_dist(pattern_reached))
+        !check_pattern_dist(pattern_reached) || !check_rotation())
         return 1;
     uint8_t *exact = exact_distances();
     if (!exact) {

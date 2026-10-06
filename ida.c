@@ -7,6 +7,11 @@
  * previous one, so every child costs one lookup per coordinate. The heuristic
  * is max(pattern_dist[p][c >> 6], orient_dist[o]), tested as two separate
  * comparisons so the second lookup is skipped when the first prunes.
+ *
+ * A child that passes both is tested twice more with the same pattern_dist,
+ * through the two rotations of the cube about the fixed corner (gen.c): each
+ * node carries the p and c of its two rotated states, and the rotated child
+ * is reached by turning the rotated face as many times.
  */
 #include <stdint.h>
 #include "tables.h"
@@ -18,15 +23,19 @@ typedef struct {
     uint16_t cp, co, cc; /* the child being generated */
     uint8_t face;    /* face of that child, NO_FACE before the first */
     uint8_t turn;    /* quarter turns applied: 0 = quarter, 1 = half, 2 = ' */
+    uint16_t vp[2], vc[2]; /* p and c of this node rotated once and twice */
 } frame_t;
 
 /* Counters for the operation-count argument; compiled out on the target.
  * pruned_first/second: children cut by the first or the second test.
+ * pruned_view: children cut by the test through each rotation; view_turns:
+ * quarter turns applied to rotated coordinates.
  * skipped_bounds: bound values an IDA* that jumped to the smallest pruned
  * f would have skipped (this one steps by 1).
  */
 #ifdef COUNT_OPS
 static uint64_t generated, expanded, pruned_first, pruned_second;
+static uint64_t pruned_view[2], view_turns;
 static uint64_t skipped_bounds;
 static unsigned min_pruned_f;
 #define COUNT(x) (++(x))
@@ -34,16 +43,18 @@ static unsigned min_pruned_f;
 #define COUNT(x) ((void) 0)
 #endif
 
-/* The cheaper test first: orient_dist prunes less often than pattern_dist
- * (46% against 74% of children) but costs 3 RV32I instructions against 6.
- * PATTERN_FIRST is the other order, for the host measurement only.
+/* The pattern test first. Over the distance-11 states it prunes 58% of the
+ * children against 16% for orient_dist, so although it costs 6 RV32I
+ * instructions against 3, the pair costs 6 + 0.42 * 3 a child this way and
+ * 3 + 0.84 * 6 the other way. ORIENT_FIRST is the other order, for the
+ * host measurement only.
  */
-#ifdef PATTERN_FIRST
-#define FIRST_H(f) pattern_h((f)->cp, (f)->cc)
-#define SECOND_H(f) orient_dist[(f)->co]
-#else
+#ifdef ORIENT_FIRST
 #define FIRST_H(f) orient_dist[(f)->co]
 #define SECOND_H(f) pattern_h((f)->cp, (f)->cc)
+#else
+#define FIRST_H(f) pattern_h((f)->cp, (f)->cc)
+#define SECOND_H(f) orient_dist[(f)->co]
 #endif
 
 /* Parse "PPPPPPPOOOOOOO" into p, o and the pair code; returns 0 on invalid
@@ -103,24 +114,88 @@ static uint8_t pattern_h(uint16_t p, uint16_t c)
     return pattern_dist[p][c >> 6];
 }
 
+/* The state string of the cube rotated about the fixed corner (gen.c); s
+ * must have passed parse.
+ */
+static void rotate(const char *s, char *t)
+{
+    for (int i = 0; i < CORNERS; ++i) {
+        uint8_t cubie = (uint8_t) (s[i] - '1'), to = sym_pi[i];
+        uint8_t twist = (uint8_t) (s[CORNERS + i] - '1' + sym_tau[i] + 3 -
+                                   sym_tau[cubie]);
+        /* 1..7: two conditional subtracts, no __umodsi3 */
+        if (twist >= 3)
+            twist -= 3;
+        if (twist >= 3)
+            twist -= 3;
+        t[to] = (char) ('1' + sym_pi[cubie]);
+        t[CORNERS + to] = (char) ('1' + twist);
+    }
+    t[2 * CORNERS] = '\0';
+}
+
+/* p and pair code of a valid state rotated once (index 0) and twice (1). */
+static void views(const char *s, uint16_t *vp, uint16_t *vc)
+{
+    char once[2 * CORNERS + 1], twice[2 * CORNERS + 1];
+    uint16_t o;
+    rotate(s, once);
+    rotate(once, twice);
+    parse(once, &vp[0], &o, &vc[0]);
+    parse(twice, &vp[1], &o, &vc[1]);
+}
+
+/* Heuristic of the child of f through rotation k, whose coordinates are left
+ * in next: the rotated node, with the rotated face turned as often.
+ */
+static uint8_t view_h(const frame_t *f, frame_t *next, int k)
+{
+    uint8_t face = k ? sym_face[sym_face[f->face]] : sym_face[f->face];
+    uint16_t p = f->vp[k], c = f->vc[k];
+    for (uint8_t t = 0; t <= f->turn; ++t) {
+        p = perm_turn[face][p];
+        c = pair_turn[face][c];
+        COUNT(view_turns);
+    }
+    next->vp[k] = p;
+    next->vc[k] = c;
+    return pattern_h(p, c);
+}
+
 #ifdef COUNT_OPS
 static void note_pruned(const frame_t *f, int depth)
 {
     unsigned a = orient_dist[f->co], b = pattern_h(f->cp, f->cc);
+    frame_t scratch;
+    uint64_t turns = view_turns;
+    for (int k = 0; k < 2; ++k) {
+        unsigned v = view_h(f, &scratch, k);
+        b = v > b ? v : b;
+    }
+    view_turns = turns;
     unsigned fv = (unsigned) depth + 1 + (a > b ? a : b);
     if (fv < min_pruned_f)
         min_pruned_f = fv;
 }
 #endif
 
-/* Writes moves as face * 3 + turn into path; returns the solution length. */
-static int solve(uint16_t p, uint16_t o, uint16_t c, uint8_t *path)
+/* Writes moves as face * 3 + turn into path; returns the solution length.
+ * vp and vc are the rotated coordinates from views.
+ */
+static int solve(uint16_t p, uint16_t o, uint16_t c, const uint16_t *vp,
+                 const uint16_t *vc, uint8_t *path)
 {
     frame_t stack[MAX_DEPTH + 1];
     if (!(p | o))
         return 0;
     uint8_t bound = pattern_h(p, c) > orient_dist[o] ? pattern_h(p, c)
                                                      : orient_dist[o];
+    for (int k = 0; k < 2; ++k) {
+        stack[0].vp[k] = vp[k];
+        stack[0].vc[k] = vc[k];
+        if (pattern_h(vp[k], vc[k]) > bound)
+            bound = pattern_h(vp[k], vc[k]);
+    }
 #ifdef COUNT_OPS
     int searched = 0; /* a bound has been tried and failed */
 #endif
@@ -183,8 +258,23 @@ static int solve(uint16_t p, uint16_t o, uint16_t c, uint8_t *path)
 #endif
                 continue;
             }
+            frame_t *next = &stack[depth + 1];
+            if (view_h(f, next, 0) > rem) {
+                COUNT(pruned_view[0]);
+#ifdef COUNT_OPS
+                note_pruned(f, depth);
+#endif
+                continue;
+            }
+            if (view_h(f, next, 1) > rem) {
+                COUNT(pruned_view[1]);
+#ifdef COUNT_OPS
+                note_pruned(f, depth);
+#endif
+                continue;
+            }
             COUNT(expanded);
-            frame_t *next = &stack[++depth];
+            ++depth;
             next->p = f->cp;
             next->o = f->co;
             next->c = f->cc;
@@ -201,14 +291,15 @@ static const char *const move_names[9] = {"R",  "R2", "R'", "B", "B2",
 
 int main(int argc, char **argv)
 {
-    uint16_t p, o, c;
+    uint16_t p, o, c, vp[2], vc[2];
     uint8_t path[MAX_DEPTH];
     if (argc != 2 || !parse(argv[1], &p, &o, &c)) {
         fprintf(stderr, "usage: %s PPPPPPPOOOOOOO\n",
                 argc > 0 && argv[0] ? argv[0] : "ida");
         return 2;
     }
-    int length = solve(p, o, c, path);
+    views(argv[1], vp, vc);
+    int length = solve(p, o, c, vp, vc, path);
     for (int i = 0; i < length; ++i)
         printf("%s%s", i ? " " : "", move_names[path[i]]);
     putchar('\n');

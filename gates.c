@@ -50,11 +50,12 @@ int main(void)
     }
     clock_t start = clock();
     uint64_t worst = 0, total = 0, first = 0, second = 0;
+    uint64_t view[2] = {0}, turns = 0, passed = 0;
     uint32_t deepest = 0, skipping = 0, skipping11 = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         state_t state;
         char text[2 * CUBIES + 1];
-        uint16_t p, o, c;
+        uint16_t p, o, c, vp[2], vc[2];
         uint8_t path[MAX_DEPTH];
         unrank_state(rank, &state);
         for (int i = 0; i < CUBIES; ++i) {
@@ -68,8 +69,10 @@ int main(void)
             return 1;
         }
         uint8_t d = exact_distance(table, state);
-        generated = pruned_first = pruned_second = skipped_bounds = 0;
-        int length = solve(p, o, c, path);
+        generated = expanded = pruned_first = pruned_second = 0;
+        pruned_view[0] = pruned_view[1] = view_turns = skipped_bounds = 0;
+        views(text, vp, vc);
+        int length = solve(p, o, c, vp, vc, path);
         skipping += skipped_bounds != 0;
         skipping11 += skipped_bounds != 0 && d == 11;
         if (length != d) {
@@ -88,6 +91,10 @@ int main(void)
             total += generated;
             first += pruned_first;
             second += pruned_second;
+            view[0] += pruned_view[0];
+            view[1] += pruned_view[1];
+            turns += view_turns;
+            passed += expanded;
             if (generated > worst)
                 worst = generated;
         }
@@ -101,6 +108,11 @@ int main(void)
            "second lookup %.0f times, second test prunes %.0f\n",
            (double) first / deepest, 100.0 * first / total,
            (double) (total - first) / deepest, (double) second / deepest);
+    printf("distance 11, mean per state: rotated once prunes %.0f, rotated "
+           "twice %.0f, %.0f quarter turns of rotated coordinates, %.0f nodes "
+           "expanded\n",
+           (double) view[0] / deepest, (double) view[1] / deepest,
+           (double) turns / deepest, (double) passed / deepest);
     printf("a jump to the smallest pruned f would skip a bound in %u states "
            "(%u at distance 11)\n",
            skipping, skipping11);

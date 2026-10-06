@@ -39,13 +39,18 @@ static int replay(uint16_t p, uint16_t o, const uint8_t *path, int length)
 
 void _start(void)
 {
+    /* gcc puts the small sym_* tables in .sdata and the linker reaches them
+     * through gp, which nothing has set up: Ripes starts at _start */
+    __asm__(".option push\n.option norelax\nla gp, __global_pointer$\n"
+            ".option pop");
     static const char input[] = STATE;
-    uint16_t p, o, c;
+    uint16_t p, o, c, vp[2], vc[2];
     uint8_t path[MAX_DEPTH];
     int status = 2;
     ecall1(4, (uintptr_t) input);
     if (parse(input, &p, &o, &c)) {
-        int length = solve(p, o, c, path);
+        views(input, vp, vc);
+        int length = solve(p, o, c, vp, vc, path);
         ecall1(4, (uintptr_t) " -> ");
         for (int i = 0; i < length; ++i) {
             if (i)
