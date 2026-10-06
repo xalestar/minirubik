@@ -107,16 +107,11 @@ render_fixed:
     mv   ra, t6
     j    render_draw
 
-# render_move: a0 = the move's face as its offset into perm_turn (0, 10080,
-# 20160), a1 = quarter turns. Applies it to the arrays and redraws.
+# render_move: a0 = the move's face (0 R, 1 B, 2 D), a1 = quarter turns.
+# Applies it to the arrays and redraws.
 render_move:
-    li   t0, 0
-    beqz a0, render_face_known
-    li   t0, 7
-    li   t1, PERM_FACE
-    beq  a0, t1, render_face_known
-    li   t0, 14
-render_face_known:
+    slli t0, a0, 3
+    sub  t0, t0, a0             # 7 * face
     la   a2, r_source
     add  a2, a2, t0             # this face's row of source and twist
     la   a3, r_twist
