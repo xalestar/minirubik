@@ -153,6 +153,16 @@ since the assignment defines the measure as `--iret` on `RV32_ISS`.
   node counts over all distance-11 states for each candidate abstraction,
   the data behind the choice of heuristic. Run from the repository root:
   `cc -O2 -w measurements/experiments/heuristics.c -o heuristics && ./heuristics`.
+* `experiments/r1-nodes.c`, output `experiments/r1-nodes.txt`: why r1 was
+  slower. A host model of the v1 search loop counts what
+  `r1-leaf-loop.patch` changes. On `21345671111111` v1 enters 38,998 nodes
+  and 124 of them have `rem = 0`; r1 adds one `beqz` at every node and two
+  `mv` at each of the 247 faces of those 124, and saves 1, 4 and 6
+  instructions on 678, 60 and 1 of their children: +38,568, the difference
+  between `sweep-r1.txt` and `sweep-v1.txt` for that state. For
+  `54721631111111` the same count gives +105,171, again the measured
+  difference. Run from the repository root:
+  `cc -O2 -w measurements/experiments/r1-nodes.c -o r1-nodes && ./r1-nodes`.
 * Pruning order, mean per distance-11 state with the v2 heuristic, printed
   by `make gates` at `34a5e0f` (and by a `gates` built with
   `-DPATTERN_FIRST` for the other order): pattern test first prunes 37,978
