@@ -68,9 +68,10 @@ to solved and has the expected length 11.
 | `sweep-v4.txt` | `05aafc2` v4: 2-bit pattern database over block codes, three views | 14,723 | 35,794 | `26154372332213` |
 | `sweep-r5.txt` | `b5990e0` r5: a child's first face starts from the registers | 14,343 | 34,730 | `26154372332213` |
 | `sweep-r6.txt` | `cec1eea` r6: shorter descent and pop | 14,277 | 34,468 | `26154372332213` |
-| `sweep-r7.txt` | r7: the walk home skips the face of the step before | 13,887 | 34,035 | `26154372332213` |
+| `sweep-r7.txt` | `f83c138` r7: the walk home skips the face of the step before | 13,887 | 34,035 | `26154372332213` |
+| `sweep-r8.txt` | r8: the rotated views turn only when the first test passes | 13,559 | 32,825 | `26154372332213` |
 
-All twelve sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All thirteen sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -112,7 +113,9 @@ comparable; `sweep-v3.txt` is sorted.
 | r5 `b5990e0` | 13,211 | 2,440 | 128,172 + 448 |
 | r6 `cec1eea` | 13,143 | 2,436 | 128,172 + 480 |
 | gcc -O2, r7 C | 48,693 | 2,528 | 123,650 `.rodata` + 35 `.sdata` |
-| r7 | 12,560 | 2,448 | 128,172 + 480 |
+| r7 `f83c138` | 12,560 | 2,448 | 128,172 + 480 |
+| gcc -O2, r8 C | 42,271 | 2,928 | 123,650 `.rodata` + 35 `.sdata` |
+| r8 | 12,540 | 2,488 | 128,172 + 480 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -245,9 +248,17 @@ counts do not change. Worst state `26154372332213` in every row.
 | `sweep-r5.txt` | r5: a node that was just a child starts its first face from the registers, at the face after its parent's: no 6 loads, no skip test | 7 for each of 152 descents: -1,064 | 14,343 | 34,730 |
 | `sweep-r6.txt` | r6: the face block of a passing child sets the parent's face itself (no `mv`); the pop of the root finds face 3 in the slot in front and goes to `deepen` (no root test in every pop) | 1 for each of 152 descents and of 142 pops (10 nodes are on the answer and never pop), +16 for each of the 2 pops of a root: -262 | 14,277 | 34,468 |
 | `sweep-r7.txt` | r7: the walk home from a root key does not try the face of the step before; a closer neighbour is never there. `make gates`: 85 keys tried per state instead of 118, and still the BFS distance for all 459,270 keys | 13 for each key not tried, 2 more for each step: 108 keys become 72 for the worst state, over 23 steps | 13,887 | 34,035 |
+| `sweep-r8.txt` | r8: the two rotated views are turned only for a child that passes the test of the state's own view; they then catch up, both together, on the turns they missed (6 a turn, 2 to count). `make gates`: 355 turns of a rotated view per state instead of 635 | worst state: 470 catch-up steps of 8, 1 for each of 304 face blocks and 142 pops, against 6 for each of 903 children: 4,206 against 5,418 | 13,559 | 32,825 |
 
-r7 also changes `ida.c`, so gcc has a new figure: 149,930 on the worst
-state (v4: 150,890).
+r7 and r8 also change `ida.c`, so gcc has new figures on the worst state:
+149,930 at r7 and 119,709 at r8 (v4: 150,890).
+
+For r8, `experiments/v4-nodes.c` was not rebuilt; the counts are from a
+copy of its search with the catch-up added. With one counter for each
+rotated view (the second view waits for the first to pass) it counted
+5,067, so that form was not built. On `RV32_5S` the three test cases take
+20,507 cycles for 16,219 instructions at r8 and 20,190 for 16,275 at r7:
+fewer instructions, more cycles.
 
 ## Smaller experiments
 

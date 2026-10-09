@@ -6,7 +6,9 @@
  * gen.c), each advanced by a quarter-turn table. The search carries three
  * views: the state and its two rotations about the fixed corner, whose
  * coordinates advance through the same tables at the rotated face. The three
- * turns of a face are produced in order, each from the previous one.
+ * turns of a face are produced in order, each from the previous one. The
+ * rotated views are turned only for a child that passes the test of the
+ * state's own view; they then catch up on the turns they missed.
  *
  * pattern_mod3 holds the distance of every key (b, o) modulo 3. The search
  * never rebuilds a distance. Per view it keeps a row of next_state, which
@@ -27,14 +29,15 @@ typedef struct {
     uint8_t face; /* face of the child being generated, NO_FACE before the
                      first */
     uint8_t turn; /* quarter turns applied: 0 = quarter, 1 = half, 2 = ' */
+    uint8_t behind; /* turns of this face the rotated views have missed */
 } frame_t;
 
 /* Counters for the operation-count argument; compiled out on the target.
  * pruned[k]: children cut by the test of view k, after passing the views
- * before it.
+ * before it. rotated_turns: quarter turns of a rotated view.
  */
 #ifdef COUNT_OPS
-static uint64_t generated, expanded, pruned[VIEWS], root_tries;
+static uint64_t generated, expanded, pruned[VIEWS], root_tries, rotated_turns;
 #define COUNT(x) (++(x))
 #else
 #define COUNT(x) ((void) 0)
@@ -230,20 +233,32 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
                 }
                 f->face = face;
                 f->turn = 0;
+                f->behind = 0;
                 for (k = 0; k < VIEWS; ++k) {
                     next->b[k] = f->b[k];
                     next->o[k] = f->o[k];
                 }
             }
-            /* the rotated views turn the rotated face */
-            for (uint8_t k2 = 0, face = f->face; k2 < VIEWS;
-                 ++k2, face = sym_face[face]) {
-                next->b[k2] = block_turn[face][next->b[k2]];
-                next->o[k2] = orient_turn[face][next->o[k2]];
-            }
+            next->b[0] = block_turn[f->face][next->b[0]];
+            next->o[0] = orient_turn[f->face][next->o[0]];
+            ++f->behind;
             COUNT(generated);
-            for (k = 0; k < VIEWS; ++k) {
-                int8_t s = next_state[f->s[k]][mod3(next->b[k], next->o[k])];
+            int8_t s = next_state[f->s[0]][mod3(next->b[0], next->o[0])];
+            if (s < 0) {
+                COUNT(pruned[0]);
+                continue;
+            }
+            next->s[0] = s;
+            /* the rotated views turn the rotated face */
+            for (; f->behind; --f->behind)
+                for (uint8_t k2 = 1, face = sym_face[f->face]; k2 < VIEWS;
+                     ++k2, face = sym_face[face]) {
+                    next->b[k2] = block_turn[face][next->b[k2]];
+                    next->o[k2] = orient_turn[face][next->o[k2]];
+                    COUNT(rotated_turns);
+                }
+            for (k = 1; k < VIEWS; ++k) {
+                s = next_state[f->s[k]][mod3(next->b[k], next->o[k])];
                 if (s < 0)
                     break;
                 next->s[k] = s;

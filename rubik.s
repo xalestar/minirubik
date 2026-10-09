@@ -350,6 +350,7 @@ root_done:
 #   t4 turns left on this face    t6 the parent's face, then this face for
 #   a child that passes           t5 the face a pop resumes
 #   t3 a1  the constants 1 and 2            t0 t1 scratch
+#   a0 turns left when the rotated views were last turned
 solve:
     mv   s3, ra
     la   s5, orient_turn
@@ -417,8 +418,11 @@ iteration:
 # One block per face: the node's coordinates are loaded, then turned three
 # times. Each view turns its own face: the state's face, and the face that
 # becomes when the cube is rotated once and twice (R -> D -> B -> R). A
-# child is tested view by view, and the first negative row ends it. A node
-# is entered at first_R or first_B, after the loads: it was just a child.
+# child is tested view by view, and the first negative row ends it. The
+# rotated views are turned only when the state's own view passes: a0 is the
+# value t4 had when they were last up to date (4: at the node), and they
+# catch up until it equals t4. A node is entered at first_R or first_B,
+# after the loads: it was just a child.
 face_R:
     beqz t6, face_B             # skip the face the parent just turned
     lw   a2, 0(s4)
@@ -429,16 +433,11 @@ face_R:
     lhu  a7, 16(s4)
 first_R:
     li   t4, 3
+    li   a0, 4
 turn_R:
     lw   a2, 0(a2)
     add  t0, s5, a5
     lhu  a5, 0(t0)
-    lw   a3, 8(a3)
-    add  t0, s7, a6
-    lhu  a6, 0(t0)
-    lw   a4, 4(a4)
-    add  t0, s6, a7
-    lhu  a7, 0(t0)
     srli t0, a5, 3
     add  t0, t0, a2
     lbu  t0, 12(t0)             # the byte of 4 values
@@ -448,6 +447,15 @@ turn_R:
     add  t0, t0, s0
     lb   s3, 0(t0)
     bltz s3, next_R
+catch_R:
+    lw   a3, 8(a3)
+    add  t0, s7, a6
+    lhu  a6, 0(t0)
+    lw   a4, 4(a4)
+    add  t0, s6, a7
+    lhu  a7, 0(t0)
+    addi a0, a0, -1
+    bne  a0, t4, catch_R
     srli t0, a6, 3
     add  t0, t0, a3
     lbu  t0, 12(t0)             # the byte of 4 values
@@ -481,16 +489,11 @@ face_B:
     lhu  a7, 16(s4)
 first_B:
     li   t4, 3
+    li   a0, 4
 turn_B:
     lw   a2, 4(a2)
     add  t0, s6, a5
     lhu  a5, 0(t0)
-    lw   a3, 0(a3)
-    add  t0, s5, a6
-    lhu  a6, 0(t0)
-    lw   a4, 8(a4)
-    add  t0, s7, a7
-    lhu  a7, 0(t0)
     srli t0, a5, 3
     add  t0, t0, a2
     lbu  t0, 12(t0)             # the byte of 4 values
@@ -500,6 +503,15 @@ turn_B:
     add  t0, t0, s0
     lb   s3, 0(t0)
     bltz s3, next_B
+catch_B:
+    lw   a3, 0(a3)
+    add  t0, s5, a6
+    lhu  a6, 0(t0)
+    lw   a4, 8(a4)
+    add  t0, s7, a7
+    lhu  a7, 0(t0)
+    addi a0, a0, -1
+    bne  a0, t4, catch_B
     srli t0, a6, 3
     add  t0, t0, a3
     lbu  t0, 12(t0)             # the byte of 4 values
@@ -532,16 +544,11 @@ face_D:
     lhu  a6, 14(s4)
     lhu  a7, 16(s4)
     li   t4, 3
+    li   a0, 4
 turn_D:
     lw   a2, 8(a2)
     add  t0, s7, a5
     lhu  a5, 0(t0)
-    lw   a3, 4(a3)
-    add  t0, s6, a6
-    lhu  a6, 0(t0)
-    lw   a4, 0(a4)
-    add  t0, s5, a7
-    lhu  a7, 0(t0)
     srli t0, a5, 3
     add  t0, t0, a2
     lbu  t0, 12(t0)             # the byte of 4 values
@@ -551,6 +558,15 @@ turn_D:
     add  t0, t0, s0
     lb   s3, 0(t0)
     bltz s3, next_D
+catch_D:
+    lw   a3, 4(a3)
+    add  t0, s6, a6
+    lhu  a6, 0(t0)
+    lw   a4, 0(a4)
+    add  t0, s5, a7
+    lhu  a7, 0(t0)
+    addi a0, a0, -1
+    bne  a0, t4, catch_D
     srli t0, a6, 3
     add  t0, t0, a3
     lbu  t0, 12(t0)             # the byte of 4 values
@@ -586,6 +602,7 @@ pop:
     lw   s1, 24(s4)
     lw   s2, 28(s4)
     lbu  t4, 18(s4)
+    mv   a0, t4                 # the child had all three views up to date
     lbu  t5, 19(s4)
     lbu  t6, -13(s4)            # the face of the slot before
     beqz t5, next_R

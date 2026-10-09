@@ -115,7 +115,7 @@ int main(void)
         return 1;
     clock_t start = clock();
     uint64_t worst = 0, total = 0, cut[VIEWS] = {0}, passed = 0, tries = 0;
-    uint64_t worst_passed = 0;
+    uint64_t worst_passed = 0, turns = 0;
     uint32_t deepest = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         state_t state;
@@ -138,7 +138,7 @@ int main(void)
             return 1;
         }
         uint8_t d = exact_distance(table, state);
-        generated = expanded = root_tries = 0;
+        generated = expanded = root_tries = rotated_turns = 0;
         pruned[0] = pruned[1] = pruned[2] = 0;
         int length = solve(vb, vo, path);
         if (length != d) {
@@ -159,6 +159,7 @@ int main(void)
                 cut[k] += pruned[k];
             passed += expanded;
             tries += root_tries;
+            turns += rotated_turns;
             if (generated > worst)
                 worst = generated;
             if (expanded > worst_passed)
@@ -178,5 +179,8 @@ int main(void)
            "tried on the way home from the three root keys\n",
            (double) passed / deepest, (unsigned long long) worst_passed,
            (double) tries / deepest);
+    printf("distance 11, mean per state: %.0f quarter turns of a rotated "
+           "view, %.0f if every child turned both\n",
+           (double) turns / deepest, 2.0 * total / deepest);
     return 0;
 }
