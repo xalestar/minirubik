@@ -73,8 +73,9 @@ to solved and has the expected length 11.
 | `sweep-r9.txt` | `555f1d3` r9: the farthest view of the root is searched first | 13,377 | 26,787 | `21354672313211` |
 | `sweep-r10.txt` | `b8612ad` r10: one block per face in the walk home | 13,169 | 26,580 | `21354672313211` |
 | `sweep-r11.txt` | r11: shorter set-up around solve | 13,156 | 26,567 | `21354672313211` |
+| `sweep-r12.txt` | r12: the key whose relabellings are at most 4 moves from solved | 9,957 | 21,265 | `42651372213311` |
 
-All sixteen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All seventeen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -123,6 +124,8 @@ comparable; `sweep-v3.txt` is sorted.
 | r9 `555f1d3` | 11,957 | 2,692 | 128,172 + 480 |
 | r10 `b8612ad` | 11,728 | 2,804 | 128,172 + 480 |
 | r11 | 11,715 | 2,760 | 128,172 + 480 |
+| gcc -O2, r12 C | 15,422 | 3,040 | |
+| r12 | 5,396 | 2,740 | 128,180 + 480 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -371,6 +374,28 @@ subtrees are a first move of a solution, but they are also the dearest to
 search).
 
 ## Round 2: where the instructions of r11 go, and which key
+
+Each row is one attempt of round 2: one change, one full sweep on Ripes
+(2,644 states, 0 failures in each). Kept rows are commits; the patch of a
+dropped row is in `experiments/` and applies to the row above it that was
+kept.
+
+| Sweep | Change | Counted before | Mean | Worst | Worst state | `.text` | Kept |
+| :--- | :--- | :--- | ---: | ---: | :--- | ---: | :--- |
+| `sweep-r11.txt` | (r11) | | 13,156 | 26,567 | `21354672313211` | 2,760 | |
+| `sweep-r12.txt` | r12 (N1): the block code keeps where cubie 3 sits, where the pair {0, 6} sits, and the ring of cubies 1, 2, 5, 4 up to a turn of D, its mirror image counting as the same when 0 and 6 are swapped. The table has the same size; its largest distance is 11 (one key). `parse` no longer computes the parity of the permutation, which the old key used | `r11-keys.c`: loop worst 18,093 and mean 6,733 against 23,433 and 9,943, so about 21,300 and 9,950 | 9,957 | 21,265 | `42651372213311` | 2,740 | yes |
+
+At r12 `make gates` counts 213 children a state (r11: 315), 40 nodes
+(57) and 90 keys tried on the walks home (85); H3 over all states takes
+3.7 s. `gen` reports 2,207,542 states where the heuristic is exact (r11:
+2,000,558) and a mean of 8.340 (8.234). On the worst state of the
+assembly, `42651372213311`, the gcc build retires 74,872 instructions
+against 21,265. The three test cases together take 8,825 instructions on
+`RV32_ISS`, 11,554 cycles on `RV32_5S` and 11,455 on `RV32_6S_DUAL`.
+
+The host programs of round 2 (`r11-nodes.c`, `r11-keys.c`, `r11-ideas.c`)
+read the `ida.c` and `tables.h` of r11 (`d1b8fed`); `r11-keys.c` needs only
+`solver.c` and builds at any commit.
 
 * `experiments/r11-nodes.c`, output `experiments/r11-nodes.txt`: the model
   of the loop at r11, by block of code, by iteration and by depth. Measured

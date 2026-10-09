@@ -57,11 +57,11 @@ void _start(void)
             ".option pop");
     static const char input[] = STATE;
     uint16_t vb[VIEWS], vo[VIEWS];
-    uint8_t parity, path[MAX_DEPTH];
+    uint8_t path[MAX_DEPTH];
     int status = 2;
     ecall1(4, (uintptr_t) input);
-    if (parse(input, &parity)) {
-        views(input, parity, vb, vo);
+    if (parse(input)) {
+        views(input, vb, vo);
         int length = solve(vb, vo, path);
         ecall1(4, (uintptr_t) " -> ");
         for (int i = 0; i < length; ++i) {

@@ -1,7 +1,7 @@
 /* Host gates for ida.c, checked against the exact BFS table of solver.c.
  *
- * For every one of the 3,674,160 states: ida.c's parser agrees with the
- * parity, the block code and the orientation rank read off the cube arrays,
+ * For every one of the 3,674,160 states: ida.c's parser accepts it and agrees
+ * with the block code and the orientation rank read off the cube arrays,
  * the search returns a path whose length equals the exact distance (H3), and
  * that path, applied by solver.c's own apply_move rather than through the
  * generated tables, reaches solved. Before that, for every key of the
@@ -20,24 +20,19 @@
 enum { BLOCKS = 630 };
 
 /* The block code computed from the cube arrays, independently of coords:
- * through the position of each cubie and the cycles of the permutation.
+ * through the position of each cubie, and the ring as the rank of a
+ * permutation.
  */
 static uint16_t block_code(const state_t *state)
 {
-    int at[CUBIES], index[CUBIES], n = 0, cycles = 0;
-    uint8_t seen = 0;
+    static const int ring_cubie[4] = {1, 2, 5, 4}; /* in the order D turns */
+    int at[CUBIES], index[CUBIES], place[4], n = 0;
     for (int i = 0; i < CUBIES; ++i)
         at[state->p[i]] = i;
-    for (int i = 0; i < CUBIES; ++i)
-        if (!(seen >> i & 1)) {
-            ++cycles;
-            for (int j = i; !(seen >> j & 1); j = state->p[j])
-                seen |= (uint8_t) (1U << j);
-        }
     for (int i = 0; i < CUBIES; ++i) /* the six positions without cubie 3 */
         index[i] = i == at[3] ? -1 : n++;
-    int c1 = index[at[2]], c2 = index[at[4]], pair = 0;
-    if (c1 > c2) {
+    int c1 = index[at[0]], c2 = index[at[6]], pair = 0, mirror = c1 > c2;
+    if (mirror) {
         int t = c1;
         c1 = c2;
         c2 = t;
@@ -46,16 +41,16 @@ static uint16_t block_code(const state_t *state)
         pair += 5 - i;
     pair += c2 - c1 - 1;
     n = 0;
-    for (int i = 0; i < CUBIES; ++i) /* the four that hold 0, 6, 1 and 5 */
-        index[i] = i == at[3] || i == at[2] || i == at[4] ? -1 : n++;
-    int lead = 0; /* the cubie in the first of the four, then its partner */
-    for (int i = 0; i < CUBIES; ++i)
-        if (index[i] == 0)
-            lead = state->p[i];
-    int mate = index[at[lead == 0 ? 6 : lead == 6 ? 0 : lead == 1 ? 5 : 1]] - 1;
-    /* a permutation of 7 with c cycles is even when 7 - c is */
-    return (uint16_t) (((at[3] * 15 + pair) * 3 + mate) * 2 +
-                       ((CUBIES - cycles) & 1));
+    for (int i = 0; i < CUBIES; ++i) /* the four that hold the ring */
+        for (int k = 0; k < 4; ++k)
+            if (state->p[i] == ring_cubie[k])
+                place[n++] = mirror ? (4 - k) & 3 : k;
+    /* after a turn of the ring that takes the first to place 0, the other
+     * three are a permutation of 1 2 3: its rank in dictionary order */
+    int second = (place[1] - place[0]) & 3, third = (place[2] - place[0]) & 3;
+    int fourth = (place[3] - place[0]) & 3;
+    return (uint16_t) ((at[3] * 15 + pair) * 6 + 2 * (second - 1) +
+                       (third > fourth));
 }
 
 /* Distance by walking the baseline's move-toward-solved table home. */
@@ -121,18 +116,18 @@ int main(void)
         state_t state;
         char text[2 * CUBIES + 1];
         uint16_t vb[VIEWS], vo[VIEWS];
-        uint8_t parity, path[MAX_DEPTH];
+        uint8_t path[MAX_DEPTH];
         unrank_state(rank, &state);
         for (int i = 0; i < CUBIES; ++i) {
             text[i] = (char) ('1' + state.p[i]);
             text[CUBIES + i] = (char) ('1' + state.o[i]);
         }
         text[2 * CUBIES] = '\0';
-        if (!parse(text, &parity)) {
+        if (!parse(text)) {
             fprintf(stderr, "parse rejects %s\n", text);
             return 1;
         }
-        views(text, parity, vb, vo);
+        views(text, vb, vo);
         if (vb[0] != block_code(&state) || vo[0] != rank % ORIENTATIONS) {
             fprintf(stderr, "coords disagrees with the cube at %s\n", text);
             return 1;

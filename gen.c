@@ -11,10 +11,16 @@
  * rotations about the fixed corner. Its key keeps
  *   o   the whole orientation, the twists by position (729 values), and
  *   b   a block code (630 values): where cubie 3 sits, where the pair of
- *       cubies {2, 4} sits, how the other four positions split into the
- *       pairs {0, 6} and {1, 5}, and the parity of the permutation.
- * The two cubies of a pair are not told apart, and neither are the pairs
- * {0, 6} and {1, 5}. Eight states share a key: 3,674,160 / 8 = 459,270.
+ *       cubies {0, 6} sits, and how cubies 1, 2, 5, 4, the ring that D
+ *       turns, sit in the other four positions.
+ * The ring is kept up to a turn of the ring, and its mirror image counts as
+ * the same when cubies 0 and 6 are swapped as well. Eight states share a
+ * key: 3,674,160 / 8 = 459,270. They are the state after one of eight
+ * relabellings of the cubies: the turns of D, R2 B2 R2, and three more that
+ * are 4 moves from solved. A relabelling of n moves changes the distance of
+ * a state by at most n, so the distance of a key is at most 4 below the
+ * distance of each of its states; of all subgroups of order 8 this one
+ * prunes the most (measurements/experiments/r11-keys.c).
  * The key commutes with the moves (checked below), so its distance in the
  * graph of keys never exceeds the distance of the state.
  * A rotation of the cube about the diagonal through the fixed corner maps
@@ -34,7 +40,7 @@
 #undef main
 
 enum {
-    BLOCKS = 630,     /* block codes: 7 * 15 * 3 * 2 */
+    BLOCKS = 630,     /* block codes: 7 * 15 * 6 */
     PATTERNS = BLOCKS * ORIENTATIONS,
     ROW_BYTES = 183,  /* 729 values of 2 bits; the last byte holds one */
     ROW_STRIDE = 196, /* tables.s: 3 addresses, the row, 1 pad */
@@ -56,8 +62,12 @@ static int8_t next_state[SEARCH_STATES][4];
 static const uint8_t sym_pi[CUBIES] = {2, 5, 6, 1, 4, 3, 0};
 static const uint8_t sym_tau[CUBIES] = {0, 1, 0, 1, 0, 1, 0};
 static const uint8_t sym_face[3] = {2, 0, 1};
-/* The block of each cubie: 0 = {0, 6}, 1 = {1, 5}, 2 = {2, 4}, 3 = {3}. */
-static const uint8_t block_of[CUBIES] = {0, 1, 2, 3, 2, 1, 0};
+/* The part of each cubie in the block code: its place 0..3 in the ring for
+ * cubies 1, 2, 5, 4 (a turn of D adds 1), 4 and 5 for cubies 0 and 6 of the
+ * pair, 6 for cubie 3.
+ */
+enum { KIND_PAIR = 4, KIND_HOME = 6 };
+static const uint8_t kind_of[CUBIES] = {4, 0, 1, 6, 3, 2, 5};
 /* pair_base[i] + j - i - 1 numbers the pairs i < j of 6 things, 0..14. */
 static const uint8_t pair_base[5] = {0, 5, 9, 12, 14};
 
@@ -73,39 +83,40 @@ static void rotate_state(const state_t *state, state_t *rotated)
 
 /* The block code of a state, read off its permutation in one pass:
  *   home    the position of cubie 3,                              7 choices
- *   c1, c2  the positions of cubies 2 and 4 among the other six,  15
- *   mate    which of the last three of the remaining four
- *           positions holds the same pair as the first,           3
- *   parity  of the permutation,                                   2
+ *   c1, c2  the positions of cubies 0 and 6 among the other six,  15
+ *   ring    the places in the ring of the cubies in the last four
+ *           positions, as the places of the second and the third
+ *           after the first: (1,2) (1,3) (2,1) (2,3) (3,1) (3,2),  6
+ * If cubie 6 comes before cubie 0, the ring is read in its mirror image: a
+ * place p after the first becomes 4 - p. Then swapping cubies 0 and 6
+ * together with cubies 2 and 4 leaves the code as it is.
  */
 static uint16_t block_code(const state_t *state)
 {
-    uint8_t home = 0, c1 = 0, c2 = 0, mate = 0, first = 0, parity = 0;
-    uint8_t six = 0, four = 0, twos = 0;
+    uint8_t home = 0, c1 = 0, c2 = 0, six = 0, ring = 0, last = 0;
     for (uint8_t i = 0; i < CUBIES; ++i) {
-        uint8_t block = block_of[state->p[i]];
-        for (uint8_t j = (uint8_t) (i + 1U); j < CUBIES; ++j)
-            parity ^= state->p[j] < state->p[i];
-        if (block == 3) {
+        uint8_t kind = kind_of[state->p[i]];
+        if (kind == KIND_HOME) {
             home = i;
             continue;
         }
-        if (block == 2) {
-            if (twos++)
-                c2 = six;
-            else
-                c1 = six;
+        if (kind >= KIND_PAIR) {
+            c1 = c2;
+            c2 = six;
+            last = kind;
         } else {
-            if (!four)
-                first = block;
-            else if (block == first)
-                mate = (uint8_t) (four - 1U);
-            ++four;
+            ring = (uint8_t) (ring << 2 | kind);
         }
         ++six;
     }
-    return (uint16_t) (((home * 15U + pair_base[c1] + c2 - c1 - 1U) * 3U +
-                        mate) * 2U + parity);
+    uint8_t first = ring >> 6;
+    uint8_t second = (uint8_t) ((ring >> 4) - first) & 3U;
+    uint8_t third = (uint8_t) ((ring >> 2) - first) & 3U;
+    uint8_t t = (uint8_t) (3U * second + third); /* 5 6 7 9 10 11 */
+    if (last == KIND_PAIR) /* cubie 0 is the second of the pair */
+        t = (uint8_t) (16U - t);
+    t = (uint8_t) (t - 6U + (t < 8));
+    return (uint16_t) ((home * 15U + pair_base[c1] + c2 - c1 - 1U) * 6U + t);
 }
 
 /* Returns 0 unless the block code commutes with the quarter turns: every
@@ -253,7 +264,7 @@ static int check_pattern_dist(uint32_t reached)
                 max = d;
         }
     if (reached != PATTERNS || pattern_dist[block_solved][0] != 0 ||
-        max != 10) {
+        max != 11) {
         fprintf(stderr, "H2 failed for pattern_dist: %u of %u reached, max "
                         "%u\n",
                 reached, PATTERNS, max);
@@ -506,7 +517,8 @@ static int write_header(const char *path)
         return 0;
     fputs("/* Generated by gen.c; do not edit. */\n#include <stdint.h>\n",
           out);
-    fprintf(out, "enum { BLOCK_SOLVED = %u };\n", block_solved);
+    fprintf(out, "enum { BLOCK_SOLVED = %u, KIND_PAIR = %d, KIND_HOME = %d };\n",
+            block_solved, KIND_PAIR, KIND_HOME);
     emit_c_u16(out, "orient_turn", &orient_turn[0][0], 3, ORIENTATIONS);
     emit_c_u16(out, "block_turn", &block_turn[0][0], 3, BLOCKS);
     fprintf(out, "static const uint8_t pattern_mod3[%u][%u] = {\n", BLOCKS,
@@ -528,7 +540,7 @@ static int write_header(const char *path)
         const uint8_t *table;
         uint32_t size;
     } small[] = {{"sym_pi", sym_pi, CUBIES},     {"sym_tau", sym_tau, CUBIES},
-                 {"sym_face", sym_face, 3},      {"block_of", block_of, CUBIES},
+                 {"sym_face", sym_face, 3},      {"kind_of", kind_of, CUBIES},
                  {"pair_base", pair_base, 5}};
     for (uint32_t k = 0; k < 5; ++k) {
         fprintf(out, "static const uint8_t %s[%u] = {", small[k].name,
@@ -609,6 +621,13 @@ static int write_asm(const char *path)
         value[i] = i < CUBIES ? sym_tau[i] : 0;
     fputs("sym_tau:\n", out);
     emit_s(out, "    .byte ", value, CUBIES + 1);
+    fputs("# the part of each cubie in the block code: ring place 0..3, 4 and "
+          "5 for\n# the pair, 6 for cubie 3; padded to 8\n"
+          "kind_of:\n",
+          out);
+    for (uint32_t i = 0; i < CUBIES + 1; ++i)
+        value[i] = i < CUBIES ? kind_of[i] : 0;
+    emit_s(out, "    .byte ", value, CUBIES + 1);
     fprintf(out, ".equ BLOCK_SOLVED, %u\n", ROW_STRIDE * block_solved);
     return fclose(out) == 0;
 }
@@ -619,14 +638,14 @@ static int write_asm(const char *path)
  */
 static int check_asm(const char *path)
 {
-    enum { TABLES = 5 };
+    enum { TABLES = 6 };
     static const char *const label[TABLES] = {"orient_turn", "pattern",
                                               "next_state", "sym_pi",
-                                              "sym_tau"};
+                                              "sym_tau",     "kind_of"};
     static const uint32_t count[TABLES] = {3 * ORIENTATIONS + 1,
                                            BLOCKS * (3 + ROW_BYTES + 1),
                                            SEARCH_STATES * 4, CUBIES + 1,
-                                           CUBIES + 1};
+                                           CUBIES + 1,        CUBIES + 1};
     uint32_t seen[TABLES] = {0};
     int table = -1;
     char line[512];
@@ -689,6 +708,9 @@ static int check_asm(const char *path)
                 break;
             case 4:
                 expect = i < CUBIES ? sym_tau[i] : 0;
+                break;
+            case 5:
+                expect = i < CUBIES ? kind_of[i] : 0;
                 break;
             }
             if (i >= count[table] || v != (long) expect) {

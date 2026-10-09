@@ -78,7 +78,6 @@ case_loop:
     mv   a0, s8
     jal  ra, parse
     beqz a2, case_invalid
-    mv   s11, a1                # parity, the same in all three views
     la   s9, frames
     la   s10, rotated
     mv   a0, s8
@@ -89,7 +88,6 @@ case_loop:
     mv   a1, s10
     jal  ra, rotate
     mv   a0, s10
-    mv   a1, s11
     jal  ra, coords
     sw   a2, -60(s9)
     sh   a3, -50(s9)
@@ -97,7 +95,6 @@ case_loop:
     addi a1, s10, 16
     jal  ra, rotate
     addi a0, s10, 16
-    mv   a1, s11
     jal  ra, coords
     sw   a2, -56(s9)
     sh   a3, -48(s9)
@@ -149,15 +146,12 @@ finish:
     ecall
 
 # parse: a0 = "PPPPPPPOOOOOOO" -> a2 = 1 if the string is a valid state, else
-# 0; a1 = the parity of its permutation. For each cubie, the larger cubies
-# before it are the bits of `seen` above its own; the parity of all those
-# counts together is the parity of the XOR of those bit sets.
+# 0.
 parse:
     li   a2, 0
     li   t6, 7
     li   t1, 0                  # i
     li   t2, 0                  # cubies seen, one bit each
-    li   a1, 0
 parse_cubie:
     add  t4, a0, t1
     lbu  t4, 0(t4)
@@ -166,8 +160,6 @@ parse_cubie:
     srl  t5, t2, t4
     andi t3, t5, 1
     bnez t3, parse_done         # duplicate cubie
-    srli t5, t5, 1
-    xor  a1, a1, t5
     li   t3, 1
     sll  t3, t3, t4
     or   t2, t2, t3
@@ -190,20 +182,13 @@ parse_reduced:
     lbu  t4, 14(a0)
     bnez t4, parse_done         # longer than 14 characters
     bnez a3, parse_done         # twist sum not 0 mod 3
-    srli t5, a1, 4              # fold the 6 bits into one
-    xor  a1, a1, t5
-    srli t5, a1, 2
-    xor  a1, a1, t5
-    srli t5, a1, 1
-    xor  a1, a1, t5
-    andi a1, a1, 1
     li   a2, 1
 parse_done:
     jalr zero, ra, 0
 
-# coords: a0 = a valid state string, a1 = the parity of its permutation ->
-# a2 = the pattern row of its block code, a3 = 2 * its orientation rank.
-# The block code is ((15 * home + pair) * 3 + mate) * 2 + parity (gen.c).
+# coords: a0 = a valid state string -> a2 = the pattern row of its block
+# code, a3 = 2 * its orientation rank. The block code is
+# (15 * home + pair) * 6 + ring (gen.c).
 coords:
     li   a3, 0
     addi t0, a0, 7
@@ -219,43 +204,50 @@ coords_twist:
     sub  a3, a3, t1
     slli a3, a3, 1
     li   t2, 0                  # positions so far that do not hold cubie 3
-    li   t3, 0                  # positions so far that hold 0, 6, 1 or 5
-    li   a7, 0                  # bit k: the k-th of those holds 1 or 5
-    li   t6, 3
+    li   a7, 0                  # the ring places so far, 2 bits each
+    la   t6, kind_of
+    li   t3, 4                  # a kind below 4 is a place in the ring,
+    li   a1, 6                  # 6 is cubie 3, 4 and 5 are cubies 0 and 6
     mv   t0, a0
     addi t5, a0, 7
 coords_cubie:
     lbu  t1, 0(t0)
-    addi t1, t1, -49            # cubie c; its block is c or 6 - c
-    bgeu t6, t1, coords_block
-    addi t1, t1, -6
-    sub  t1, zero, t1
-coords_block:
-    beq  t1, t6, coords_home
-    addi t4, t1, -2
-    beqz t4, coords_pair
-    sll  t4, t1, t3
-    or   a7, a7, t4
-    addi t3, t3, 1
-    j    coords_free
-coords_pair:
-    mv   a4, a5                 # a4 a5: where cubies 2 and 4 sit, in order
+    add  t1, t1, t6
+    lbu  t1, -49(t1)            # the kind of the cubie, by digit - '1'
+    bltu t1, t3, coords_ring
+    beq  t1, a1, coords_home
+    mv   a4, a5                 # a4 a5: where cubies 0 and 6 sit, in order
     mv   a5, t2
-coords_free:
-    addi t2, t2, 1
-    j    coords_next
+    mv   t4, t1                 # the second of the two
+    j    coords_free
 coords_home:
     sub  a6, t0, a0             # where cubie 3 sits
+    j    coords_next
+coords_ring:
+    slli a7, a7, 2
+    or   a7, a7, t1
+coords_free:
+    addi t2, t2, 1
 coords_next:
     addi t0, t0, 1
     bltu t0, t5, coords_cubie
-    andi t0, a7, 1              # name the block of the first of the four 0;
-    beqz t0, coords_mate        # then a7 is 12, 10 or 6: its partner is the
-    xori a7, a7, 15             # 1st, 2nd or 3rd of the other three
-coords_mate:
-    li   t0, 14
-    sub  t0, t0, a7
-    srli t0, t0, 2              # mate 0..2
+    srli t0, a7, 6              # the place of the first ring cubie
+    srli t1, a7, 4
+    sub  t1, t1, t0
+    andi t1, t1, 3              # the second's place after the first's
+    srli t2, a7, 2
+    sub  t2, t2, t0
+    andi t2, t2, 3              # the third's
+    slli t0, t1, 1
+    add  t0, t0, t1
+    add  t0, t0, t2             # 3 * second + third: 5 6 7 9 10 11
+    bne  t4, t3, coords_ranked
+    li   t1, 16                 # cubie 0 is the second of the pair: the
+    sub  t0, t1, t0             # mirror image of the ring
+coords_ranked:
+    slti t1, t0, 8
+    add  t0, t0, t1
+    addi t0, t0, -6             # ring 0..5
     la   t1, pair_base
     add  t1, t1, a4
     lbu  t1, 0(t1)
@@ -267,9 +259,8 @@ coords_mate:
     add  t1, t1, t2             # 15 * home + pair
     slli t2, t1, 1
     add  t1, t1, t2
-    add  t1, t1, t0             # * 3 + mate
-    slli t1, t1, 1
-    add  t1, t1, a1             # * 2 + parity
+    slli t1, t1, 1              # * 6
+    add  t1, t1, t0             # + ring
     slli t0, t1, 7              # a row is 196 = 128 + 64 + 4 bytes
     slli t2, t1, 6
     add  t0, t0, t2

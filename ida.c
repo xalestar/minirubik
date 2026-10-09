@@ -43,21 +43,16 @@ static uint64_t generated, expanded, pruned[VIEWS], root_tries, rotated_turns;
 #define COUNT(x) ((void) 0)
 #endif
 
-/* Checks "PPPPPPPOOOOOOO"; returns 0 on invalid input. *parity is the parity
- * of the permutation: for each cubie, the cubies before it that are larger
- * are the bits of `seen` above its own, and the parity of a sum of bit
- * counts is the parity of the XOR of the bit sets.
- */
-static int parse(const char *s, uint8_t *parity)
+/* Checks "PPPPPPPOOOOOOO"; returns 0 on invalid input. */
+static int parse(const char *s)
 {
-    uint8_t seen = 0, sum = 0, odd = 0;
+    uint8_t seen = 0, sum = 0;
     /* all seven cubie digits first, so nothing below reads past the end of
      * a short string */
     for (int i = 0; i < CORNERS; ++i) {
         uint8_t c = (uint8_t) (s[i] - '1');
         if (c >= CORNERS || seen & 1U << c)
             return 0;
-        odd ^= (uint8_t) (seen >> c >> 1);
         seen |= (uint8_t) (1U << c);
     }
     for (int i = 0; i < CORNERS; ++i) {
@@ -70,50 +65,47 @@ static int parse(const char *s, uint8_t *parity)
         if (sum >= 3)
             sum -= 3;
     }
-    if (s[2 * CORNERS] != '\0' || sum)
-        return 0;
-    odd ^= odd >> 4;
-    odd ^= odd >> 2;
-    odd ^= odd >> 1;
-    *parity = odd & 1U;
-    return 1;
+    return s[2 * CORNERS] == '\0' && !sum;
 }
 
 /* Block code and orientation rank of a valid state string (gen.c's
  * block_code, read from the digits in one pass).
  */
-static void coords(const char *s, uint8_t parity, uint16_t *b, uint16_t *o)
+static void coords(const char *s, uint16_t *b, uint16_t *o)
 {
-    uint8_t home = 0, c1 = 0, c2 = 0, mate = 0, first = 0;
-    uint8_t six = 0, four = 0, twos = 0;
+    uint8_t home = 0, c1 = 0, c2 = 0, six = 0, ring = 0, last = 0;
     uint16_t orank = 0;
     for (uint8_t i = 0; i < CORNERS - 1; ++i)
         orank = (uint16_t) ((orank << 1) + orank + s[CORNERS + i] - '1');
     for (uint8_t i = 0; i < CORNERS; ++i) {
-        uint8_t block = block_of[s[i] - '1'];
-        if (block == 3) {
+        uint8_t kind = kind_of[s[i] - '1'];
+        if (kind == KIND_HOME) {
             home = i;
             continue;
         }
-        if (block == 2) {
-            if (twos++)
-                c2 = six;
-            else
-                c1 = six;
+        if (kind >= KIND_PAIR) {
+            c1 = c2;
+            c2 = six;
+            last = kind;
         } else {
-            if (!four)
-                first = block;
-            else if (block == first)
-                mate = (uint8_t) (four - 1U);
-            ++four;
+            ring = (uint8_t) (ring << 2 | kind);
         }
         ++six;
     }
-    /* ((15 * home + pair) * 3 + mate) * 2 + parity, by shifts and adds */
+    /* the places of the second and the third ring cubie after the first,
+     * in the mirror image if cubie 0 is the second of the pair */
+    uint8_t first = ring >> 6;
+    uint8_t second = (uint8_t) ((ring >> 4) - first) & 3U;
+    uint8_t third = (uint8_t) ((ring >> 2) - first) & 3U;
+    uint8_t t = (uint8_t) ((second << 1) + second + third);
+    if (last == KIND_PAIR)
+        t = (uint8_t) (16U - t);
+    t = (uint8_t) (t - 6U + (t < 8));
+    /* (15 * home + pair) * 6 + ring, by shifts and adds */
     uint16_t code = (uint16_t) ((home << 4) - home + pair_base[c1] + c2 - c1 -
                                 1);
-    code = (uint16_t) ((code << 1) + code + mate);
-    *b = (uint16_t) ((code << 1) + parity);
+    code = (uint16_t) ((code << 1) + code);
+    *b = (uint16_t) ((code << 1) + t);
     *o = orank;
 }
 
@@ -138,16 +130,16 @@ static void rotate(const char *s, char *t)
 }
 
 /* The coordinates of a valid state (index 0) and of the state rotated once
- * (1) and twice (2). A rotation keeps the parity of the permutation.
+ * (1) and twice (2).
  */
-static void views(const char *s, uint8_t parity, uint16_t *vb, uint16_t *vo)
+static void views(const char *s, uint16_t *vb, uint16_t *vo)
 {
     char once[2 * CORNERS + 1], twice[2 * CORNERS + 1];
     rotate(s, once);
     rotate(once, twice);
-    coords(s, parity, &vb[0], &vo[0]);
-    coords(once, parity, &vb[1], &vo[1]);
-    coords(twice, parity, &vb[2], &vo[2]);
+    coords(s, &vb[0], &vo[0]);
+    coords(once, &vb[1], &vo[1]);
+    coords(twice, &vb[2], &vo[2]);
 }
 
 /* The distance of key (b, o) modulo 3. */
@@ -313,13 +305,13 @@ static const char *const move_names[9] = {"R",  "R2", "R'", "B", "B2",
 int main(int argc, char **argv)
 {
     uint16_t vb[VIEWS], vo[VIEWS];
-    uint8_t parity, path[MAX_DEPTH];
-    if (argc != 2 || !parse(argv[1], &parity)) {
+    uint8_t path[MAX_DEPTH];
+    if (argc != 2 || !parse(argv[1])) {
         fprintf(stderr, "usage: %s PPPPPPPOOOOOOO\n",
                 argc > 0 && argv[0] ? argv[0] : "ida");
         return 2;
     }
-    views(argv[1], parity, vb, vo);
+    views(argv[1], vb, vo);
     int length = solve(vb, vo, path);
     for (int i = 0; i < length; ++i)
         printf("%s%s", i ? " " : "", move_names[path[i]]);
