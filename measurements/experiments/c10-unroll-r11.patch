@@ -1,0 +1,202 @@
+diff --git a/rubik.s b/rubik.s
+index 4281149..4260439 100644
+--- a/rubik.s
++++ b/rubik.s
+@@ -512,9 +512,34 @@ face_R:
+     lhu  a6, 14(s4)
+     lhu  a7, 16(s4)
+ first_R:
+-    li   t4, 3
+     li   a0, 4
+-turn_R:
++R_1:
++    lw   a2, 0(a2)
++    add  t0, s5, a5
++    lhu  a5, 0(t0)
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++    bgez s3, pass1_R
++R_2:
++    lw   a2, 0(a2)
++    add  t0, s5, a5
++    lhu  a5, 0(t0)
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++    bgez s3, pass2_R
++R_3:
+     lw   a2, 0(a2)
+     add  t0, s5, a5
+     lhu  a5, 0(t0)
+@@ -526,7 +551,8 @@ turn_R:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+-    bltz s3, next_R
++    bltz s3, face_B
++    li   t4, 1
+ catch_R:
+     lw   a3, 8(a3)
+     add  t0, s7, a6
+@@ -556,9 +582,16 @@ catch_R:
+     bltz s11, next_R
+     li   t6, 0                  # the child's parent face
+     j    passed
++pass1_R:
++    li   t4, 3
++    j    catch_R
++pass2_R:
++    li   t4, 2
++    j    catch_R
+ next_R:
+-    addi t4, t4, -1
+-    bnez t4, turn_R
++    beq  t4, t3, face_B
++    beq  t4, a1, R_3
++    j    R_2
+ face_B:
+     beq  t6, t3, face_D
+     lw   a2, 0(s4)
+@@ -568,9 +601,8 @@ face_B:
+     lhu  a6, 14(s4)
+     lhu  a7, 16(s4)
+ first_B:
+-    li   t4, 3
+     li   a0, 4
+-turn_B:
++B_1:
+     lw   a2, 4(a2)
+     add  t0, s6, a5
+     lhu  a5, 0(t0)
+@@ -582,7 +614,34 @@ turn_B:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+-    bltz s3, next_B
++    bgez s3, pass1_B
++B_2:
++    lw   a2, 4(a2)
++    add  t0, s6, a5
++    lhu  a5, 0(t0)
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++    bgez s3, pass2_B
++B_3:
++    lw   a2, 4(a2)
++    add  t0, s6, a5
++    lhu  a5, 0(t0)
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++    bltz s3, face_D
++    li   t4, 1
+ catch_B:
+     lw   a3, 0(a3)
+     add  t0, s5, a6
+@@ -612,9 +671,16 @@ catch_B:
+     bltz s11, next_B
+     li   t6, 1                  # the child's parent face
+     j    passed
++pass1_B:
++    li   t4, 3
++    j    catch_B
++pass2_B:
++    li   t4, 2
++    j    catch_B
+ next_B:
+-    addi t4, t4, -1
+-    bnez t4, turn_B
++    beq  t4, t3, face_D
++    beq  t4, a1, B_3
++    j    B_2
+ face_D:
+     beq  t6, a1, pop
+     lw   a2, 0(s4)
+@@ -623,9 +689,8 @@ face_D:
+     lhu  a5, 12(s4)
+     lhu  a6, 14(s4)
+     lhu  a7, 16(s4)
+-    li   t4, 3
+     li   a0, 4
+-turn_D:
++D_1:
+     lw   a2, 8(a2)
+     add  t0, s7, a5
+     lhu  a5, 0(t0)
+@@ -637,7 +702,34 @@ turn_D:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+-    bltz s3, next_D
++    bgez s3, pass1_D
++D_2:
++    lw   a2, 8(a2)
++    add  t0, s7, a5
++    lhu  a5, 0(t0)
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++    bgez s3, pass2_D
++D_3:
++    lw   a2, 8(a2)
++    add  t0, s7, a5
++    lhu  a5, 0(t0)
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++    bltz s3, pop
++    li   t4, 1
+ catch_D:
+     lw   a3, 4(a3)
+     add  t0, s6, a6
+@@ -667,9 +759,16 @@ catch_D:
+     bltz s11, next_D
+     li   t6, 2                  # the child's parent face
+     j    passed
++pass1_D:
++    li   t4, 3
++    j    catch_D
++pass2_D:
++    li   t4, 2
++    j    catch_D
+ next_D:
+-    addi t4, t4, -1
+-    bnez t4, turn_D
++    beq  t4, t3, pop
++    beq  t4, a1, D_3
++    j    D_2
+ pop:
+     lw   a2, 0(s4)              # this node is the parent's child in progress
+     lw   a3, 4(s4)

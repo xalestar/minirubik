@@ -311,6 +311,15 @@ All six sweeps: 2,644 states, 0 failures.
 | `sweep-a9-two-views.txt` | `a9-two-views.patch`: the third view is carried but not tested | 18,648 | 97,400 | `12354761112323` | 2,672 | slower: 3.7 times |
 | `sweep-c2-cannot-prune.txt` | `c2-cannot-prune.patch`: a view with slack 2 or more is tested only for a child that passes the others | 14,265 | 28,874 | `21354672313211` | 3,204 | slower: +2,294, and `.text` over gcc's |
 
+Three more were built on r11 (`d1b8fed`), one after the other:
+
+| Sweep | Patch | Mean | Worst | Worst state | `.text` | Why dropped |
+| :--- | :--- | ---: | ---: | :--- | ---: | :--- |
+| `sweep-r11.txt` | (r11) | 13,156 | 26,567 | `21354672313211` | 2,760 | |
+| `sweep-c10-unroll-r11.txt` | `c10-unroll-r11.patch`: the unrolled first view again, on the shorter r11 | 12,869 | 26,167 | `21354672313211` | 3,108 | faster by 400, but `.text` is still 16 bytes over gcc's 3,092: check 5 fails |
+| `sweep-c9-face-order-dbr.txt` | `c9-face-order-dbr.patch`: face blocks in the order D, B, R | 13,274 | 27,813 | `13246571111111` | 2,760 | slower: +1,246 |
+| `sweep-c9-face-order-brd.txt` | `c9-face-order-brd.patch`: face blocks in the order B, R, D | 13,270 | 32,430 | `52341671111111` | 2,760 | slower: +5,863 |
+
 The model below had 26,895, 26,694, 26,420, 26,853 and 27,434 for the
 first four and the last; the unrolled loop does better than its count by
 240 because the count kept the `li t4, 3` at the head of every face block,

@@ -1,0 +1,170 @@
+diff --git a/rubik.s b/rubik.s
+index 4281149..b244d92 100644
+--- a/rubik.s
++++ b/rubik.s
+@@ -503,20 +503,20 @@ iteration:
+ # value t4 had when they were last up to date (4: at the node), and they
+ # catch up until it equals t4. A node is entered at first_R or first_B,
+ # after the loads: it was just a child.
+-face_R:
+-    beqz t6, face_B             # skip the face the parent just turned
++face_B:
++    beq  t6, t3, face_R
+     lw   a2, 0(s4)
+     lw   a3, 4(s4)
+     lw   a4, 8(s4)
+     lhu  a5, 12(s4)
+     lhu  a6, 14(s4)
+     lhu  a7, 16(s4)
+-first_R:
++first_B:
+     li   t4, 3
+     li   a0, 4
+-turn_R:
+-    lw   a2, 0(a2)
+-    add  t0, s5, a5
++turn_B:
++    lw   a2, 4(a2)
++    add  t0, s6, a5
+     lhu  a5, 0(t0)
+     srli t0, a5, 3
+     add  t0, t0, a2
+@@ -526,16 +526,16 @@ turn_R:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+-    bltz s3, next_R
+-catch_R:
+-    lw   a3, 8(a3)
+-    add  t0, s7, a6
++    bltz s3, next_B
++catch_B:
++    lw   a3, 0(a3)
++    add  t0, s5, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 4(a4)
+-    add  t0, s6, a7
++    lw   a4, 8(a4)
++    add  t0, s7, a7
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+-    bne  a0, t4, catch_R
++    bne  a0, t4, catch_B
+     srli t0, a6, 3
+     add  t0, t0, a3
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -544,7 +544,7 @@ catch_R:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+-    bltz s10, next_R
++    bltz s10, next_B
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -553,26 +553,26 @@ catch_R:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+-    bltz s11, next_R
+-    li   t6, 0                  # the child's parent face
++    bltz s11, next_B
++    li   t6, 1                  # the child's parent face
+     j    passed
+-next_R:
++next_B:
+     addi t4, t4, -1
+-    bnez t4, turn_R
+-face_B:
+-    beq  t6, t3, face_D
++    bnez t4, turn_B
++face_R:
++    beqz t6, face_D
+     lw   a2, 0(s4)
+     lw   a3, 4(s4)
+     lw   a4, 8(s4)
+     lhu  a5, 12(s4)
+     lhu  a6, 14(s4)
+     lhu  a7, 16(s4)
+-first_B:
++first_R:
+     li   t4, 3
+     li   a0, 4
+-turn_B:
+-    lw   a2, 4(a2)
+-    add  t0, s6, a5
++turn_R:
++    lw   a2, 0(a2)
++    add  t0, s5, a5
+     lhu  a5, 0(t0)
+     srli t0, a5, 3
+     add  t0, t0, a2
+@@ -582,16 +582,16 @@ turn_B:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+-    bltz s3, next_B
+-catch_B:
+-    lw   a3, 0(a3)
+-    add  t0, s5, a6
++    bltz s3, next_R
++catch_R:
++    lw   a3, 8(a3)
++    add  t0, s7, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 8(a4)
+-    add  t0, s7, a7
++    lw   a4, 4(a4)
++    add  t0, s6, a7
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+-    bne  a0, t4, catch_B
++    bne  a0, t4, catch_R
+     srli t0, a6, 3
+     add  t0, t0, a3
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -600,7 +600,7 @@ catch_B:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+-    bltz s10, next_B
++    bltz s10, next_R
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -609,12 +609,12 @@ catch_B:
+     andi t0, t0, 3              # the child's distance modulo 3
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+-    bltz s11, next_B
+-    li   t6, 1                  # the child's parent face
++    bltz s11, next_R
++    li   t6, 0                  # the child's parent face
+     j    passed
+-next_B:
++next_R:
+     addi t4, t4, -1
+-    bnez t4, turn_B
++    bnez t4, turn_R
+ face_D:
+     beq  t6, a1, pop
+     lw   a2, 0(s4)
+@@ -623,6 +623,7 @@ face_D:
+     lhu  a5, 12(s4)
+     lhu  a6, 14(s4)
+     lhu  a7, 16(s4)
++first_D:
+     li   t4, 3
+     li   a0, 4
+ turn_D:
+@@ -706,8 +707,8 @@ passed:
+     sw   s0, 20(s4)
+     sw   s1, 24(s4)
+     sw   s2, 28(s4)
+-    bnez t6, first_R            # the child's coordinates are in the registers:
+-    j    first_B                # its first face, R, or B after an R
++    bne  t6, t3, first_B
++    j    first_R
+ found:
+     lw   t1, 16(sp)             # the faces of the cube as given: a rotation
+     beqz t1, found_length       # takes a face to the one before it
