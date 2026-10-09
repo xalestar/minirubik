@@ -110,6 +110,7 @@ int main(void)
         return 1;
     clock_t start = clock();
     uint64_t worst = 0, total = 0, cut[VIEWS] = {0}, passed = 0, tries = 0;
+    uint64_t cut_tight = 0;
     uint64_t worst_passed = 0, turns = 0;
     uint32_t deepest = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
@@ -134,7 +135,7 @@ int main(void)
         }
         uint8_t d = exact_distance(table, state);
         generated = expanded = root_tries = rotated_turns = 0;
-        pruned[0] = pruned[1] = pruned[2] = 0;
+        pruned[0] = pruned[1] = pruned[2] = pruned_tight = 0;
         int length = solve(vb, vo, path);
         if (length != d) {
             fprintf(stderr, "H3 failed at %s: length %d, distance %u\n", text,
@@ -152,6 +153,7 @@ int main(void)
             total += generated;
             for (int k = 0; k < VIEWS; ++k)
                 cut[k] += pruned[k];
+            cut_tight += pruned_tight;
             passed += expanded;
             tries += root_tries;
             turns += rotated_turns;
@@ -170,6 +172,9 @@ int main(void)
            "(%.1f%%), rotated once %.0f, rotated twice %.0f\n",
            (double) cut[0] / deepest, 100.0 * cut[0] / total,
            (double) cut[1] / deepest, (double) cut[2] / deepest);
+    printf("distance 11, mean per state: %.1f children pass the three views "
+           "with no slack in any and are cut: one move more is needed\n",
+           (double) cut_tight / deepest);
     printf("distance 11: nodes expanded mean %.0f, worst %llu; %.0f keys "
            "tried on the way home from the three root keys\n",
            (double) passed / deepest, (unsigned long long) worst_passed,

@@ -23,6 +23,15 @@
  * prunes the most (measurements/experiments/r11-keys.c).
  * The key commutes with the moves (checked below), so its distance in the
  * graph of keys never exceeds the distance of the state.
+ * The turns of D are among the relabellings, and the rotated views have the
+ * turns of R and of B in the same way. A shortest sequence that makes a
+ * state from solved starts with a turn of some face; without that turn the
+ * state is one move closer, and it has the same key in the view of that
+ * face. So in at least one view the key is closer than the state: a state
+ * whose three keys are equally far is one move farther than they are,
+ * unless it is solved. The heuristic is the largest of the three key
+ * distances, or the smallest plus one when that is more (gate H1 checks
+ * both parts over all states).
  * A rotation of the cube about the diagonal through the fixed corner maps
  * states to states at the same distance, so the distance of the rotated key
  * is a lower bound too; it measures the twists against another axis and
@@ -46,7 +55,7 @@ enum {
     ROW_STRIDE = 196, /* tables.s: 3 addresses, the row, 1 pad */
     ROW_WORDS = 46,   /* the row and its pad, as the words the assembly reads */
     TURN_HALVES = ROW_WORDS * 64 - 16, /* orient_turn in tables.s */
-    SLACKS = 12,      /* slack 0..11 */
+    SLACKS = 8,       /* slack 0..7; a key is at most 4 below its states */
     SEARCH_STATES = SLACKS * 3
 };
 
@@ -339,24 +348,38 @@ static uint8_t pattern_of(const state_t *state)
     return pattern_dist[block_code(state)][rank_state(&copy) % ORIENTATIONS];
 }
 
-/* H1: the heuristic, the largest pattern_dist over the state and its two
- * rotations, never exceeds the exact distance, and it is 0 for the solved
- * state only: the search takes a child with h = 0 for solved.
+/* H1: the heuristic never exceeds the exact distance, and it is 0 for the
+ * solved state only. It is the largest pattern_dist over the state and its
+ * two rotations, or the smallest plus one if that is more and the state is
+ * not solved. Also: no key is more than SLACKS - 1 closer than its state,
+ * so next_state has a row for every slack the search can meet.
  */
 static int check_admissible(const uint8_t *exact)
 {
-    uint32_t tight = 0, zero = 0;
+    uint32_t tight = 0, zero = 0, raised = 0;
     uint64_t sum = 0;
+    uint8_t gap = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         state_t state, once, twice;
         unrank_state(rank, &state);
         rotate_state(&state, &once);
         rotate_state(&once, &twice);
-        uint8_t h = 0;
+        uint8_t h = 0, least = UINT8_MAX;
         const state_t *view[] = {&state, &once, &twice};
-        for (uint8_t k = 0; k < 3; ++k)
-            if (pattern_of(view[k]) > h)
-                h = pattern_of(view[k]);
+        for (uint8_t k = 0; k < 3; ++k) {
+            uint8_t key = pattern_of(view[k]);
+            if (key > h)
+                h = key;
+            if (key < least)
+                least = key;
+            if (exact[rank] != UINT8_MAX && key <= exact[rank] &&
+                exact[rank] - key > gap)
+                gap = (uint8_t) (exact[rank] - key);
+        }
+        if (rank && least == h) { /* three keys equally far: one move more */
+            ++h;
+            ++raised;
+        }
         if (exact[rank] == UINT8_MAX || h > exact[rank]) {
             fprintf(stderr, "H1 failed at rank %u: h %u, d %u\n", rank, h,
                     exact[rank]);
@@ -366,13 +389,18 @@ static int check_admissible(const uint8_t *exact)
         zero += h == 0;
         sum += h;
     }
-    if (zero != 1) {
-        fprintf(stderr, "H1 failed: h = 0 for %u states\n", zero);
+    if (zero != 1 || gap >= SLACKS) {
+        fprintf(stderr, "H1 failed: h = 0 for %u states, a key %u closer than "
+                        "its state\n",
+                zero, gap);
         return 0;
     }
     printf("H1 h <= d over %u states (%u exact, mean h %.3f), h = 0 for the "
            "solved state only\n",
            STATES, tight, (double) sum / STATES);
+    printf("H1 three keys equally far in %u states, counted one move more; a "
+           "key is at most %u closer than its state\n",
+           raised, gap);
     return 1;
 }
 
@@ -587,6 +615,14 @@ static void emit_s(FILE *out, const char *directive, const uint32_t *value,
                 i % 16 == 15 || i + 1 == count ? "\n" : "");
 }
 
+/* The offset of row 3 * slack + distance mod 3 of next_state in the
+ * assembly: 16 bytes for each slack, so an offset below 16 means slack 0.
+ */
+static uint32_t state_offset(int row)
+{
+    return 16U * (uint32_t) (row / 3) + 4U * (uint32_t) (row % 3);
+}
+
 /* The assembly keeps an orientation rank as orient_offset: a looked-up
  * offset is used as is to index orient_turn, to find the word of a pattern
  * row and to shift it. orient_turn is laid out for these offsets: a block of
@@ -594,8 +630,8 @@ static void emit_s(FILE *out, const char *directive, const uint32_t *value,
  * 32 and of D at 64; the last 32 bytes of a block are not used. A block code
  * is stored as the address of its row, and each row starts with the
  * addresses of the three rows its code turns into, so advancing a block code
- * is one load. next_state is stored times 4, the offset of a row of itself,
- * with 255 for -1.
+ * is one load. next_state is stored as state_offset, the offset of a row of
+ * itself, with 255 for -1; the fourth row of every slack is not used.
  */
 static int write_asm(const char *path)
 {
@@ -634,15 +670,17 @@ static int write_asm(const char *path)
         value[ROW_BYTES] = 0;
         emit_s(out, "    .byte ", value, ROW_BYTES + 1);
     }
-    fputs("# [12 * slack + 4 * (distance mod 3) + value] -> the same offset "
-          "for the child\n"
+    fputs("# [16 * slack + 4 * (distance mod 3) + value] -> the same offset "
+          "for the child;\n# bytes 12..15 of a slack are unused\n"
           "next_state:\n",
           out);
-    for (uint32_t i = 0; i < SEARCH_STATES * 4; ++i)
-        value[i] = next_state[i / 4][i % 4] < 0
+    for (uint32_t i = 0; i < SLACKS * 16; ++i) {
+        uint32_t row = 3 * (i / 16) + i % 16 / 4;
+        value[i] = i % 16 >= 12 || next_state[row][i % 4] < 0
                        ? 255U
-                       : 4U * (uint32_t) next_state[i / 4][i % 4];
-    emit_s(out, "    .byte ", value, SEARCH_STATES * 4);
+                       : state_offset(next_state[row][i % 4]);
+    }
+    emit_s(out, "    .byte ", value, SLACKS * 16);
     fputs("# the rotation about the fixed corner: [i] -> position and cubie\n"
           "# map, twist offset; 7 bytes each, padded to 8\n",
           out);
@@ -677,7 +715,7 @@ static int check_asm(const char *path)
                                               "sym_tau",     "kind_of"};
     static const uint32_t count[TABLES] = {TURN_HALVES,
                                            BLOCKS * (3 + ROW_BYTES + 1),
-                                           SEARCH_STATES * 4, CUBIES + 1,
+                                           SLACKS * 16,       CUBIES + 1,
                                            CUBIES + 1,        CUBIES + 1};
     uint32_t seen[TABLES] = {0};
     int table = -1;
@@ -730,11 +768,11 @@ static int check_asm(const char *path)
                                  : 0;
                 break;
             case 2:
-                expect = i < SEARCH_STATES * 4
-                             ? (uint8_t) (next_state[i / 4][i % 4] < 0
-                                              ? 255
-                                              : 4 * next_state[i / 4][i % 4])
-                             : 0;
+                expect = i < SLACKS * 16 && i % 16 < 12 &&
+                                 next_state[3 * (i / 16) + i % 16 / 4][i % 4] >= 0
+                             ? state_offset(
+                                   next_state[3 * (i / 16) + i % 16 / 4][i % 4])
+                             : 255;
                 break;
             case 3:
                 expect = i < CUBIES ? sym_pi[i] : 0;

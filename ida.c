@@ -14,9 +14,13 @@
  * never rebuilds a distance. Per view it keeps a row of next_state, which
  * stands for (slack, distance mod 3) with slack = moves left - distance, and
  * steps it with the 2-bit value of the child. A child whose slack would be
- * negative in some view is pruned; a child that passes with no move left has
- * distance 0 in all three views, and only the solved state has that (gate H1
- * in gen.c).
+ * negative in some view is pruned.
+ *
+ * A child with slack 0 in all three views has its three keys exactly as far
+ * as there are moves left. With no move left that is distance 0 in all three
+ * views, and only the solved state has that. With moves left the child is
+ * pruned: in at least one view the key of a state is closer than the state
+ * (gen.c, gate H1), so this state needs one move more.
  */
 #include <stdint.h>
 #include "tables.h"
@@ -34,10 +38,12 @@ typedef struct {
 
 /* Counters for the operation-count argument; compiled out on the target.
  * pruned[k]: children cut by the test of view k, after passing the views
- * before it. rotated_turns: quarter turns of a rotated view.
+ * before it. pruned_tight: children that pass and have slack 0 in every
+ * view. rotated_turns: quarter turns of a rotated view.
  */
 #ifdef COUNT_OPS
-static uint64_t generated, expanded, pruned[VIEWS], root_tries, rotated_turns;
+static uint64_t generated, expanded, pruned[VIEWS], pruned_tight, root_tries,
+    rotated_turns;
 #define COUNT(x) (++(x))
 #else
 #define COUNT(x) ((void) 0)
@@ -194,6 +200,9 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
     }
     if (!bound)
         return 0;
+    /* three keys equally far: the state is one move farther */
+    if (far[0] == far[1] && far[1] == far[2])
+        ++bound;
     /* The view that is farthest from solved goes first: its test prunes the
      * most, and it is the one every child pays for. The other two follow in
      * the same cyclic order, so of two views equally far, the one whose
@@ -278,7 +287,12 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
                 COUNT(pruned[k]);
                 continue;
             }
-            if (depth + 1 == bound) {
+            /* rows 0..2 are slack 0 */
+            if (next->s[0] < 3 && next->s[1] < 3 && next->s[2] < 3) {
+                if (depth + 1 != bound) {
+                    COUNT(pruned_tight);
+                    continue;
+                }
                 /* back to the faces of the cube as given: sym_face takes a
                  * face to the one before it, so add `lead` */
                 for (int i = 0; i <= depth; ++i) {

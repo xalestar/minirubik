@@ -6,19 +6,21 @@
 # its orientation rank o, held as the offset 128 * (o / 16) + 2 * (o % 16).
 # A row starts with the addresses of the rows the code turns into, so a
 # quarter turn is one load for the block code and one add and one load for
-# the orientation. The search carries three views, the
-# state and its two rotations about the fixed corner; the rotated views turn
-# the rotated face. The three turns of a face are chained, each child from
-# the previous one, in registers.
+# the orientation. The search carries three views, the state and its two
+# rotations about the fixed corner; the rotated views turn the rotated face.
+# The three turns of a face are chained, each child from the previous one,
+# in registers.
 #
 # After its three addresses a row holds the distance modulo 3 of each
 # orientation, 2 bits each, 16 to a word. The offset shifted right by 5 is
 # the byte offset of the word, and a shift by the offset itself, which uses
-# its low 5 bits, brings the value down. No distance is rebuilt: per view the node keeps
-# the address of a 4-byte row of next_state, which stands for (slack,
-# distance mod 3) with slack = moves left - distance. Adding the child's
-# 2-bit value and loading gives the child's row, or -1 if its slack would be
-# negative: pruned. A child that passes with no move left is solved.
+# its low 5 bits, brings the value down. No distance is rebuilt: per view the
+# node keeps the address of a 4-byte row of next_state, which stands for
+# (slack, distance mod 3) with slack = moves left - distance. Adding the
+# child's 2-bit value and loading gives the offset of the child's row, or -1
+# if its slack would be negative: pruned. The rows of slack 0 are the first
+# 16 bytes. A child with slack 0 in all three views is solved if no move is
+# left, and pruned otherwise: it needs one move more (gen.c).
 #
 # Preprocess with asmpp.awk (Ripes has no .if or .include):
 #   RENDER=0  CLI build, measured with --iret
@@ -369,7 +371,7 @@ root_done:
 # its test prunes the most, and every child pays for it. The other two
 # follow in the same cyclic order, so of two views equally far the one whose
 # follower is farther goes first. This is the search of the cube rotated
-# that many times; found turns the faces back. Writes the count to 16(sp)
+# that many times; last turns the faces back. Writes the count to 16(sp)
 # and the solved row to 20(sp).
 # Registers while searching:
 #   a2 a3 a4  the child's pattern row in each view
@@ -380,7 +382,7 @@ root_done:
 #   s4 the node's slot    s9 frames         s8 the last slot that is expanded
 #   t4 turns left on this face    t6 the parent's face, then this face for
 #   a child that passes           t5 the face a pop resumes
-#   t3 a1  the constants 1 and 2            t0 t1 scratch
+#   t3 a1 gp  the constants 1, 2 and 16     t0 t1 scratch
 #   a0 turns left when the rotated views were last turned
 solve:
     la   s5, orient_turn
@@ -393,6 +395,7 @@ solve:
     li   t0, 3
     sb   t0, -13(s9)            # byte 19 of the slot in front of the root's
     li   t3, 1
+    li   gp, 16                 # the rows of next_state below 16: slack 0
     li   s10, 0                 # the largest of the three distances
     mv   s4, s9                 # s4 t6: the view's row and orientation
     mv   t6, s9
@@ -407,10 +410,8 @@ solve_view:
     bgeu s10, a0, solve_kept
     mv   s10, a0
 solve_kept:
-    slli t0, a0, 3              # 4 * (distance mod 3) - 12 * distance, the
-    slli t1, a0, 2              # offset into next_state at slack 0
-    add  t0, t0, t1
-    slli t1, a1, 2
+    slli t0, a0, 4              # 4 * (distance mod 3) - 16 * distance, the
+    slli t1, a1, 2              # offset into next_state at slack 0
     sub  t0, t1, t0
     sw   t0, 20(s4)
     addi s4, s4, 4
@@ -421,6 +422,10 @@ solve_kept:
     lbu  t0, -44(s9)            # the first view: the farthest, and of two
     lbu  t1, -40(s9)            # equally far the one whose follower is
     lbu  t2, -36(s9)            # farther
+    bne  t0, t1, solve_order    # three keys equally far: the state is one
+    bne  t1, t2, solve_order    # move farther (gen.c)
+    addi s10, s10, 1
+solve_order:
     slli a2, t0, 4
     add  a2, a2, t1
     slli a3, t1, 4
@@ -460,9 +465,7 @@ solve_rotate:                   # every view moves up one place
     bnez s0, solve_rotate
 solve_first:
     la   t2, next_state
-    slli t0, s10, 3             # slack = bound - distance: add 12 * bound
-    slli t1, s10, 2
-    add  t0, t0, t1
+    slli t0, s10, 4             # slack = bound - distance: add 16 * bound
     add  t0, t0, t2
     lw   s0, 20(s9)
     lw   s1, 24(s9)
@@ -480,9 +483,9 @@ deepen:
     lw   s0, 20(s9)             # one more move: slack + 1 in each view
     lw   s1, 24(s9)
     lw   s2, 28(s9)
-    addi s0, s0, 12
-    addi s1, s1, 12
-    addi s2, s2, 12
+    addi s0, s0, 16
+    addi s1, s1, 16
+    addi s2, s2, 16
 iteration:
     sw   s0, 20(s9)
     sw   s1, 24(s9)
@@ -492,7 +495,8 @@ iteration:
 # One block per face: the node's coordinates are loaded, then turned three
 # times. Each view turns its own face: the state's face, and the face that
 # becomes when the cube is rotated once and twice (R -> D -> B -> R). A
-# child is tested view by view, and the first negative row ends it. The
+# child is tested view by view, and the first negative row ends it. A child
+# that passes with no slack in any view is solved or cut (tight_R). The
 # rotated views are turned only when the state's own view passes: a0 is the
 # value t4 had when they were last up to date (4: at the node), and they
 # catch up until it equals t4. A node is entered at first_R or first_B,
@@ -545,8 +549,16 @@ catch_R:
     add  t0, t0, s2
     lb   s11, 0(t0)
     bltz s11, next_R
+    bltu s11, gp, tight_R       # no slack in the third view
+pass_R:
     li   t6, 0                  # the child's parent face
     j    passed
+tight_R:
+    or   t0, s3, s10
+    bgeu t0, gp, pass_R         # slack in another view
+    bne  s4, s8, next_R         # moves left: one move more is needed
+    li   t6, 0                  # no move left: solved
+    j    last
 next_R:
     addi t4, t4, -1
     bnez t4, turn_R
@@ -598,8 +610,16 @@ catch_B:
     add  t0, t0, s2
     lb   s11, 0(t0)
     bltz s11, next_B
+    bltu s11, gp, tight_B       # no slack in the third view
+pass_B:
     li   t6, 1                  # the child's parent face
     j    passed
+tight_B:
+    or   t0, s3, s10
+    bgeu t0, gp, pass_B         # slack in another view
+    bne  s4, s8, next_B         # moves left: one move more is needed
+    li   t6, 1                  # no move left: solved
+    j    last
 next_B:
     addi t4, t4, -1
     bnez t4, turn_B
@@ -650,8 +670,16 @@ catch_D:
     add  t0, t0, s2
     lb   s11, 0(t0)
     bltz s11, next_D
+    bltu s11, gp, tight_D       # no slack in the third view
+pass_D:
     li   t6, 2                  # the child's parent face
     j    passed
+tight_D:
+    or   t0, s3, s10
+    bgeu t0, gp, pass_D         # slack in another view
+    bne  s4, s8, next_D         # moves left: one move more is needed
+    li   t6, 2                  # no move left: solved
+    j    last
 next_D:
     addi t4, t4, -1
     bnez t4, turn_D
@@ -677,7 +705,6 @@ pop:
 passed:
     sb   t4, 18(s4)             # this move, for the resume and the answer
     sb   t6, 19(s4)
-    beq  s4, s8, found          # no move left: distance 0 in every view
     addi s4, s4, FRAME          # descend: the child gets its own slot
     sw   a2, 0(s4)
     sw   a3, 4(s4)
@@ -693,7 +720,9 @@ passed:
     sw   s2, 28(s4)
     bnez t6, first_R            # the child's coordinates are in the registers:
     j    first_B                # its first face, R, or B after an R
-found:
+last:
+    sb   t4, 18(s4)             # the last move of the answer
+    sb   t6, 19(s4)
     lw   t1, 16(sp)             # the faces of the cube as given: a rotation
     beqz t1, found_length       # takes a face to the one before it
     mv   t0, s9
