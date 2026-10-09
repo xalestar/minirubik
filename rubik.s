@@ -29,7 +29,7 @@
 
 .equ RENDER, 0
 .equ ORIENT_FACE, 32            # from one face to the next in orient_turn
-.equ FRAME, 32                  # bytes per slot in frames
+.equ FRAME, 36                  # bytes per slot in frames
 
 .data
 # No .align anywhere: it means 2^n bytes to GNU as but n bytes to Ripes.
@@ -56,18 +56,20 @@ pair_base:   .byte 0, 5, 9, 12, 14, 0, 0, 0
 farther:     .byte 1, 255, 0, 1, 255, 0, 0, 0
 
 .bss
-# One 32-byte slot per depth, 0..11, and two in front of the root's. The
-# pop of the root reads the second of them as its parent and finds face 3
-# there. The first holds the three views of the state as given (bytes
-# 0..17); slot 0 holds them with the farthest view first.
+# One 36-byte slot per depth, 0..11, and two in front of the root's. The
+# first of the two holds the three views of the state as given (bytes
+# 0..17) and their distances (bytes 20 24 28); slot 0 holds the views with
+# the farthest first. The second is the parent the root is popped to: no
+# face, and deepen as the place to go on.
 #   0 4 8     the pattern row of this node in each view (words)
 #  12 14 16   its orientation offset in each view
 #  18 turns left on the face of the child being searched (3..1)
 #  19 that face (0 R, 1 B, 2 D); 3 in the slot in front: no parent face
 #  20 24 28   the next_state row of this node in each view (words)
+#  32 where the search goes on when the subtree of that child fails
 # Move k of the answer is bytes 19 and 18 of slot k.
-guard:   .zero 64
-frames:  .zero 384
+guard:   .zero 72
+frames:  .zero 432
 rotated: .zero 32               # the state string rotated once, and twice
 
 .text
@@ -91,22 +93,22 @@ case_loop:
     la   s10, rotated
     mv   a0, s8
     jal  ra, coords
-    sw   a2, -64(s9)            # the root's views, in the first slot in front
-    sh   a3, -52(s9)
+    sw   a2, -72(s9)            # the root's views, in the first slot in front
+    sh   a3, -60(s9)
     mv   a0, s8                 # the same state rotated once, then twice
     mv   a1, s10
     jal  ra, rotate
     mv   a0, s10
     jal  ra, coords
-    sw   a2, -60(s9)
-    sh   a3, -50(s9)
+    sw   a2, -68(s9)
+    sh   a3, -58(s9)
     mv   a0, s10
     addi a1, s10, 16
     jal  ra, rotate
     addi a0, s10, 16
     jal  ra, coords
-    sw   a2, -56(s9)
-    sh   a3, -48(s9)
+    sw   a2, -64(s9)
+    sh   a3, -56(s9)
 .if RENDER
     mv   a0, s8
     jal  ra, render_init        # draw the scrambled cube
@@ -341,8 +343,8 @@ root_home:
 #   s5 s6 s7  orient_turn of R, B, D        t2 next_state
 #   s4 the node's slot    s9 frames         s8 the last slot that is expanded
 #   t4 turns left on this face    t6 the parent's face, then this face for
-#   a child that passes           t5 the face a pop resumes
-#   t3 a1 gp  the constants 1, 2 and 16     t0 t1 scratch
+#   a child that passes           t5 where a child that is cut goes back to
+#   t3 a1 gp  the constants 1, 2 and 16     t0 t1 scratch    tp the bound
 #   a0 turns left when the rotated views were last turned
 solve:
     la   s5, orient_turn
@@ -353,7 +355,9 @@ solve:
     add  s8, s8, t0
     sw   s8, 20(sp)             # replay compares with it
     li   t0, 3
-    sb   t0, -13(s9)            # byte 19 of the slot in front of the root's
+    sb   t0, -17(s9)            # the slot in front of the root's: no face,
+    la   t0, deepen             # and a pop of the root goes on at deepen
+    sw   t0, -4(s9)
     li   t3, 1
     li   gp, 16                 # the rows of next_state below 16: slack 0
     la   t2, farther            # for root_dist
@@ -362,12 +366,12 @@ solve:
     mv   t6, s9
     addi s11, s9, 12
 solve_view:
-    lw   a2, -64(s4)
-    lhu  a5, -52(t6)
+    lw   a2, -72(s4)
+    lhu  a5, -60(t6)
     sw   a2, 0(s4)
     sh   a5, 12(t6)
     jal  a7, root_dist
-    sb   a0, -44(s4)            # kept in the slot in front, bytes 20 24 28
+    sb   a0, -52(s4)            # kept in the slot in front, bytes 20 24 28
     bgeu s10, a0, solve_kept
     mv   s10, a0
 solve_kept:
@@ -380,9 +384,9 @@ solve_kept:
     bltu s4, s11, solve_view
     mv   a0, s10
     beqz s10, solve_done        # already solved
-    lbu  t0, -44(s9)            # the first view: the farthest, and of two
-    lbu  t1, -40(s9)            # equally far the one whose follower is
-    lbu  t2, -36(s9)            # farther
+    lbu  t0, -52(s9)            # the first view: the farthest, and of two
+    lbu  t1, -48(s9)            # equally far the one whose follower is
+    lbu  t2, -44(s9)            # farther
     bne  t0, t1, solve_order    # three keys equally far: the state is one
     bne  t1, t2, solve_order    # move farther (gen.c)
     addi s10, s10, 1
@@ -434,12 +438,16 @@ solve_first:
     add  s0, s0, t0
     add  s1, s1, t0
     add  s2, s2, t0
-    slli s8, s10, 5             # FRAME = 32
+    slli s8, s10, 5             # FRAME = 36
+    slli t0, s10, 2
+    add  s8, s8, t0
     add  s8, s8, s9
     addi s8, s8, -FRAME         # the slot at depth bound - 1
+    mv   tp, s10                # the bound
     li   a1, 2
     j    iteration
 deepen:
+    addi tp, tp, 1
     addi s8, s8, FRAME
     lw   s0, 20(s9)             # one more move: slack + 1 in each view
     lw   s1, 24(s9)
@@ -453,15 +461,18 @@ iteration:
     sw   s2, 28(s9)
     mv   s4, s9
     li   t6, 3                  # the root has no parent face
-# One block per face: the node's coordinates are loaded, then turned three
-# times. Each view turns its own face: the state's face, and the face that
-# becomes when the cube is rotated once and twice (R -> D -> B -> R). A
-# child is tested view by view, and the first negative row ends it. A child
-# that passes with no slack in any view is solved or cut (tight_R). The
-# rotated views are turned only when the state's own view passes: a0 is the
-# value t4 had when they were last up to date (4: at the node), and they
-# catch up until it equals t4. A node is entered at first_R or first_B,
-# after the loads: it was just a child.
+# One block per face: the node's coordinates are loaded, then the state's
+# own view is turned three times, each turn with its own copy of the test.
+# A child that fails it costs nothing more. A child that passes goes
+# through the rest of its face (rest_R): the rotated views catch up and are
+# tested. They turn the face that the state's face becomes when the cube is
+# rotated once and twice (R -> D -> B -> R); a0 is the value t4 had when
+# they were last up to date (4: at the node), and they turn until it equals
+# t4. The first negative row sends the search back through t5, to the next
+# turn or the next face. A child that passes with no slack in any view is
+# solved or cut (tight_R). When a child is searched, t5 is kept in the
+# node's slot, and the pop of the child comes back through it. A node is
+# entered at first_R or first_B, after the loads: it was just a child.
 face_R:
     beqz t6, face_B             # skip the face the parent just turned
     lw   a2, 0(s4)
@@ -471,9 +482,8 @@ face_R:
     lhu  a6, 14(s4)
     lhu  a7, 16(s4)
 first_R:
-    li   t4, 3
     li   a0, 4
-turn_R:
+R_1:
     lw   a2, 0(a2)
     add  t0, s5, a5
     lhu  a5, 0(t0)
@@ -484,45 +494,37 @@ turn_R:
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s0
     lb   s3, 0(t0)
-    bltz s3, next_R
-catch_R:
-    lw   a3, 8(a3)
-    add  t0, s7, a6
-    lhu  a6, 0(t0)
-    lw   a4, 4(a4)
-    add  t0, s6, a7
-    lhu  a7, 0(t0)
-    addi a0, a0, -1
-    bne  a0, t4, catch_R
-    srli t0, a6, 5
-    add  t0, t0, a3
+    bltz s3, R_2
+    li   t4, 3
+    jal  t5, rest_R
+R_2:
+    lw   a2, 0(a2)
+    add  t0, s5, a5
+    lhu  a5, 0(t0)
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a6             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
-    add  t0, t0, s1
-    lb   s10, 0(t0)
-    bltz s10, next_R
-    srli t0, a7, 5
-    add  t0, t0, a4
+    add  t0, t0, s0
+    lb   s3, 0(t0)
+    bltz s3, R_3
+    li   t4, 2
+    jal  t5, rest_R
+R_3:
+    lw   a2, 0(a2)
+    add  t0, s5, a5
+    lhu  a5, 0(t0)
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a7             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
-    add  t0, t0, s2
-    lb   s11, 0(t0)
-    bltz s11, next_R
-    bltu s11, gp, tight_R       # no slack in the third view
-pass_R:
-    li   t6, 0                  # the child's parent face
-    j    passed
-tight_R:
-    or   t0, s3, s10
-    bgeu t0, gp, pass_R         # slack in another view
-    bne  s4, s8, next_R         # moves left: one move more is needed
-    li   t6, 0                  # no move left: solved
-    j    last
-next_R:
-    addi t4, t4, -1
-    bnez t4, turn_R
+    add  t0, t0, s0
+    lb   s3, 0(t0)
+    bltz s3, face_B
+    li   t4, 1
+    jal  t5, rest_R
 face_B:
     beq  t6, t3, face_D
     lw   a2, 0(s4)
@@ -532,9 +534,8 @@ face_B:
     lhu  a6, 14(s4)
     lhu  a7, 16(s4)
 first_B:
-    li   t4, 3
     li   a0, 4
-turn_B:
+B_1:
     lw   a2, 4(a2)
     add  t0, s6, a5
     lhu  a5, 0(t0)
@@ -545,45 +546,37 @@ turn_B:
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s0
     lb   s3, 0(t0)
-    bltz s3, next_B
-catch_B:
-    lw   a3, 0(a3)
-    add  t0, s5, a6
-    lhu  a6, 0(t0)
-    lw   a4, 8(a4)
-    add  t0, s7, a7
-    lhu  a7, 0(t0)
-    addi a0, a0, -1
-    bne  a0, t4, catch_B
-    srli t0, a6, 5
-    add  t0, t0, a3
+    bltz s3, B_2
+    li   t4, 3
+    jal  t5, rest_B
+B_2:
+    lw   a2, 4(a2)
+    add  t0, s6, a5
+    lhu  a5, 0(t0)
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a6             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
-    add  t0, t0, s1
-    lb   s10, 0(t0)
-    bltz s10, next_B
-    srli t0, a7, 5
-    add  t0, t0, a4
+    add  t0, t0, s0
+    lb   s3, 0(t0)
+    bltz s3, B_3
+    li   t4, 2
+    jal  t5, rest_B
+B_3:
+    lw   a2, 4(a2)
+    add  t0, s6, a5
+    lhu  a5, 0(t0)
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a7             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
-    add  t0, t0, s2
-    lb   s11, 0(t0)
-    bltz s11, next_B
-    bltu s11, gp, tight_B       # no slack in the third view
-pass_B:
-    li   t6, 1                  # the child's parent face
-    j    passed
-tight_B:
-    or   t0, s3, s10
-    bgeu t0, gp, pass_B         # slack in another view
-    bne  s4, s8, next_B         # moves left: one move more is needed
-    li   t6, 1                  # no move left: solved
-    j    last
-next_B:
-    addi t4, t4, -1
-    bnez t4, turn_B
+    add  t0, t0, s0
+    lb   s3, 0(t0)
+    bltz s3, face_D
+    li   t4, 1
+    jal  t5, rest_B
 face_D:
     beq  t6, a1, pop
     lw   a2, 0(s4)
@@ -592,9 +585,8 @@ face_D:
     lhu  a5, 12(s4)
     lhu  a6, 14(s4)
     lhu  a7, 16(s4)
-    li   t4, 3
     li   a0, 4
-turn_D:
+D_1:
     lw   a2, 8(a2)
     add  t0, s7, a5
     lhu  a5, 0(t0)
@@ -605,45 +597,37 @@ turn_D:
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s0
     lb   s3, 0(t0)
-    bltz s3, next_D
-catch_D:
-    lw   a3, 4(a3)
-    add  t0, s6, a6
-    lhu  a6, 0(t0)
-    lw   a4, 0(a4)
-    add  t0, s5, a7
-    lhu  a7, 0(t0)
-    addi a0, a0, -1
-    bne  a0, t4, catch_D
-    srli t0, a6, 5
-    add  t0, t0, a3
+    bltz s3, D_2
+    li   t4, 3
+    jal  t5, rest_D
+D_2:
+    lw   a2, 8(a2)
+    add  t0, s7, a5
+    lhu  a5, 0(t0)
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a6             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
-    add  t0, t0, s1
-    lb   s10, 0(t0)
-    bltz s10, next_D
-    srli t0, a7, 5
-    add  t0, t0, a4
+    add  t0, t0, s0
+    lb   s3, 0(t0)
+    bltz s3, D_3
+    li   t4, 2
+    jal  t5, rest_D
+D_3:
+    lw   a2, 8(a2)
+    add  t0, s7, a5
+    lhu  a5, 0(t0)
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a7             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
-    add  t0, t0, s2
-    lb   s11, 0(t0)
-    bltz s11, next_D
-    bltu s11, gp, tight_D       # no slack in the third view
-pass_D:
-    li   t6, 2                  # the child's parent face
-    j    passed
-tight_D:
-    or   t0, s3, s10
-    bgeu t0, gp, pass_D         # slack in another view
-    bne  s4, s8, next_D         # moves left: one move more is needed
-    li   t6, 2                  # no move left: solved
-    j    last
-next_D:
-    addi t4, t4, -1
-    bnez t4, turn_D
+    add  t0, t0, s0
+    lb   s3, 0(t0)
+    bltz s3, pop
+    li   t4, 1
+    jal  t5, rest_D
 pop:
     lw   a2, 0(s4)              # this node is the parent's child in progress
     lw   a3, 4(s4)
@@ -655,17 +639,15 @@ pop:
     lw   s0, 20(s4)
     lw   s1, 24(s4)
     lw   s2, 28(s4)
-    lbu  t4, 18(s4)
-    mv   a0, t4                 # the child had all three views up to date
-    lbu  t5, 19(s4)
-    lbu  t6, -13(s4)            # the face of the slot before
-    beqz t5, next_R
-    beq  t5, t3, next_B
-    beq  t5, a1, next_D
-    j    deepen                 # face 3: the slot in front of the root's
+    lbu  a0, 18(s4)             # the child had all three views up to date
+    lw   t5, 32(s4)
+    lbu  t6, -17(s4)            # the face of the slot before
+back:
+    jalr zero, t5, 0            # the next turn, the next face, or deepen
 passed:
-    sb   t4, 18(s4)             # this move, for the resume and the answer
+    sb   t4, 18(s4)             # this move, for the answer
     sb   t6, 19(s4)
+    sw   t5, 32(s4)             # where to go on if the child's subtree fails
     addi s4, s4, FRAME          # descend: the child gets its own slot
     sw   a2, 0(s4)
     sw   a3, 4(s4)
@@ -681,6 +663,110 @@ passed:
     sw   s2, 28(s4)
     bnez t6, first_R            # the child's coordinates are in the registers:
     j    first_B                # its first face, R, or B after an R
+rest_R:
+    lw   a3, 8(a3)
+    add  t0, s7, a6
+    lhu  a6, 0(t0)
+    lw   a4, 4(a4)
+    add  t0, s6, a7
+    lhu  a7, 0(t0)
+    addi a0, a0, -1
+    bne  a0, t4, rest_R
+    srli t0, a6, 5
+    add  t0, t0, a3
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
+    andi t0, t0, 3              # the child's distance modulo 3
+    add  t0, t0, s1
+    lb   s10, 0(t0)
+    bltz s10, back
+    srli t0, a7, 5
+    add  t0, t0, a4
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a7             # by the low 5 bits
+    andi t0, t0, 3              # the child's distance modulo 3
+    add  t0, t0, s2
+    lb   s11, 0(t0)
+    bltz s11, back
+    bltu s11, gp, tight_R       # no slack in the third view
+pass_R:
+    li   t6, 0                  # the child's parent face
+    j    passed
+tight_R:
+    or   t0, s3, s10
+    bgeu t0, gp, pass_R         # slack in another view
+    bne  s4, s8, back           # moves left: one move more is needed
+    li   t6, 0                  # no move left: solved
+    j    last
+rest_B:
+    lw   a3, 0(a3)
+    add  t0, s5, a6
+    lhu  a6, 0(t0)
+    lw   a4, 8(a4)
+    add  t0, s7, a7
+    lhu  a7, 0(t0)
+    addi a0, a0, -1
+    bne  a0, t4, rest_B
+    srli t0, a6, 5
+    add  t0, t0, a3
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
+    andi t0, t0, 3              # the child's distance modulo 3
+    add  t0, t0, s1
+    lb   s10, 0(t0)
+    bltz s10, back
+    srli t0, a7, 5
+    add  t0, t0, a4
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a7             # by the low 5 bits
+    andi t0, t0, 3              # the child's distance modulo 3
+    add  t0, t0, s2
+    lb   s11, 0(t0)
+    bltz s11, back
+    bltu s11, gp, tight_B       # no slack in the third view
+pass_B:
+    li   t6, 1                  # the child's parent face
+    j    passed
+tight_B:
+    or   t0, s3, s10
+    bgeu t0, gp, pass_B         # slack in another view
+    bne  s4, s8, back           # moves left: one move more is needed
+    li   t6, 1                  # no move left: solved
+    j    last
+rest_D:
+    lw   a3, 4(a3)
+    add  t0, s6, a6
+    lhu  a6, 0(t0)
+    lw   a4, 0(a4)
+    add  t0, s5, a7
+    lhu  a7, 0(t0)
+    addi a0, a0, -1
+    bne  a0, t4, rest_D
+    srli t0, a6, 5
+    add  t0, t0, a3
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
+    andi t0, t0, 3              # the child's distance modulo 3
+    add  t0, t0, s1
+    lb   s10, 0(t0)
+    bltz s10, back
+    srli t0, a7, 5
+    add  t0, t0, a4
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a7             # by the low 5 bits
+    andi t0, t0, 3              # the child's distance modulo 3
+    add  t0, t0, s2
+    lb   s11, 0(t0)
+    bltz s11, back
+    bltu s11, gp, tight_D       # no slack in the third view
+pass_D:
+    li   t6, 2                  # the child's parent face
+    j    passed
+tight_D:
+    or   t0, s3, s10
+    bgeu t0, gp, pass_D         # slack in another view
+    bne  s4, s8, back           # moves left: one move more is needed
+    li   t6, 2                  # no move left: solved
 last:
     sb   t4, 18(s4)             # the last move of the answer
     sb   t6, 19(s4)
@@ -698,9 +784,7 @@ found_kept:
     addi t0, t0, FRAME
     bgeu s4, t0, found_face
 found_length:
-    sub  a0, s4, s9
-    srli a0, a0, 5              # FRAME = 32
-    addi a0, a0, 1
+    mv   a0, tp
 solve_done:
     jalr zero, ra, 0
 
@@ -748,7 +832,9 @@ rotate_not_high:
 # Keeps s5 s6 s7 s9 of solve for replay.
 print_path:
     mv   s2, s9
-    slli t0, a0, 5              # FRAME = 32
+    slli t0, a0, 5              # FRAME = 36
+    slli t1, a0, 2
+    add  t0, t0, t1
     add  s1, s9, t0             # the slot after the last move
 print_move:
     beq  s2, s1, print_done
@@ -778,14 +864,16 @@ print_done:
 # solve left them.
 replay:
     sw   ra, 12(sp)
-    lw   s3, -64(s9)            # the views as given, not as searched
-    lw   s4, -60(s9)
-    lw   s8, -56(s9)
-    lhu  s10, -52(s9)
-    lhu  s11, -50(s9)
-    lhu  s0, -48(s9)
+    lw   s3, -72(s9)            # the views as given, not as searched
+    lw   s4, -68(s9)
+    lw   s8, -64(s9)
+    lhu  s10, -60(s9)
+    lhu  s11, -58(s9)
+    lhu  s0, -56(s9)
     mv   s2, s9
-    slli t0, a0, 5              # FRAME = 32
+    slli t0, a0, 5              # FRAME = 36
+    slli t1, a0, 2
+    add  t0, t0, t1
     add  s1, s9, t0
 replay_move:
     beq  s2, s1, replay_done

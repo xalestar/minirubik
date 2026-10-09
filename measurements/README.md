@@ -77,8 +77,9 @@ to solved and has the expected length 11.
 | `sweep-r13.txt` | r13: the 2-bit value read from a word, shifted by the orientation offset itself | 9,530 | 20,273 | `42651372213311` |
 | `sweep-r14.txt` | r14: a child with no slack in any of the three views is cut | 7,490 | 15,459 | `32674152113333` |
 | `sweep-r15.txt` | r15: the root distances by turning the orientation home | 6,509 | 14,512 | `32674152113333` |
+| `sweep-r16.txt` | r16: the first view's three turns unrolled, pops through a stored address | 6,378 | 13,986 | `32674152113333` |
 
-All twenty sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All twenty-one sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -134,6 +135,7 @@ comparable; `sweep-v3.txt` is sorted.
 | r14 | 4,716 | 2,780 | 129,644 + 480 |
 | gcc -O2, r15 C | 11,202 | 2,996 | |
 | r15 | 3,822 | 2,644 | 129,684 + 480 |
+| r16 (gcc as at r15: the C did not change) | 3,806 | 2,964 | 129,684 + 536 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -395,6 +397,7 @@ kept.
 | `sweep-r13.txt` | r13 (N2): an orientation rank o is kept as the offset 128 * (o / 16) + 2 * (o % 16). Shifted right by 5 it is the byte offset of the word of the row that holds the value; a shift by the offset itself uses its low 5 bits, the position in the word. `orient_turn` is laid out for these offsets (a block of 128 bytes for 16 ranks, 32 of them unused): 5,856 bytes instead of 4,376. The rows of the table are the same bytes | 1 instruction less for each lookup: 601 first tests, about 350 rotated tests and 90 keys on the walks home for the worst state; 12 more in `coords` | 9,530 | 20,273 | `42651372213311` | 2,704 | yes |
 | `sweep-r14.txt` | r14 (N16): the turns of D are among the relabellings of the key, and those of R and B in the rotated views. A shortest sequence that makes a state starts with a turn of some face, so in the view of that face the key is closer than the state. So a child whose three keys are all exactly as far as there are moves left needs one move more: it is cut, unless no move is left (then it is the solved state). At the root, three equal key distances start the bound one higher. `next_state` has 16 bytes a slack, so a row offset below 16 means slack 0, and 8 slacks instead of 12 (`gen` checks that a key is at most 4 closer than its state) | host model on r13: worst 15,749, mean 7,580; 9.0 children a state are cut this way and take their subtrees with them: 134.7 children a state instead of 212.8 | 7,490 | 15,459 | `32674152113333` | 2,780 | yes |
 | `sweep-r15.txt` | r15 (N17): the distance of a root key is no longer found by a search for closer neighbours. `orient_turn` names for every orientation the quarter turn that brings it one quarter turn closer to home (in the 32 bytes of each block that were unused), the key is turned that way until its orientation is home, and the values modulo 3 give the change of the distance on the way. The last byte of each row, a pad until now, is the distance of the row's code at the home orientation | host count over all 459,270 keys: 6.73 quarter turns a key (at most 10) of 18 instructions, always the BFS distance; the search for neighbours tried 90 keys of 10 instructions a state, with about 26 steps around them | 6,509 | 14,512 | `32674152113333` | 2,644 | yes |
+| `sweep-r16.txt` | r16 (N3, N9): each of the three turns of a face has its own copy of the first view's turn and test, so a child that fails it costs 11 instructions and no loop counter. A child that passes calls the rest of its face (`rest_R`: catch-up and the two rotated tests) with `jal`; a cut returns through that register to the next turn or the next face. The register is kept in the node's slot when a child is searched (slots are 36 bytes now), and the pop of the child jumps through it: no dispatch on the face and the turn, and after a third turn the pop lands on the next face. The bound is kept in `tp` for the length of the answer | round 1: -400 on r11 for the unrolled turns alone, with `.text` over gcc's; pops: 3 to 5 instructions less each; r15 left 352 bytes of `.text` under gcc's | 6,378 | 13,986 | `32674152113333` | 2,964 | yes |
 
 At r12 `make gates` counts 213 children a state (r11: 315), 40 nodes
 (57) and 90 keys tried on the walks home (85); H3 over all states takes
@@ -430,19 +433,25 @@ three first-view turns, counted by the host interpreter): r14 equals
 `ida.c` for all 2,644 states.
 
 At r15 the three root distances of the worst state take 357 instructions
-(r14: 1,343), and `root_dist` is 29 instructions of code instead of 63.
+(r14: 1,343), and `.text` is 2,644 bytes (r14: 2,780).
 `make gates` checks it against a BFS for all 459,270 keys; a state at
 distance 11 needs 18.8 quarter turns for its three keys. The gcc build
 retires 53,381 instructions on `32674152113333` against 14,512. Three
 test cases: 6,942 instructions on `RV32_ISS`, 9,228 cycles on `RV32_5S`,
 9,165 on `RV32_6S_DUAL`. Static data: 130,164 bytes (CLI), 130,430 (GUI).
 
+At r16 `.text` is 2,964 bytes against gcc's 2,996, so 32 bytes are left:
+the unrolled copies are 75 instructions. Three test cases: 6,926
+instructions on `RV32_ISS`, 9,227 cycles on `RV32_5S`, 9,188 on
+`RV32_6S_DUAL`. Static data: 130,220 bytes (CLI), 130,486 (GUI); the 14
+slots of 36 bytes are 56 bytes more than at r15.
+
 From r13 on, every one of the 3,674,160 states was also run through
 `rubik-cli.s` on the host interpreter, with its exact distance as the
 expected length of the test case: all exit with code 0. The worst state
 overall is a distance-11 state (r13: 20,273; the worst at distance 10 is
 16,297, at distance 9 12,435; r14: 15,459, 12,677 and 10,681; r15:
-14,512 at distance 11).
+14,512 at distance 11; r16: 13,986).
 
 The host programs of round 2 (`r11-nodes.c`, `r11-keys.c`, `r11-ideas.c`)
 read the `ida.c` and `tables.h` of r11 (`d1b8fed`); `r11-keys.c` needs only
