@@ -1,0 +1,29 @@
+2644 states; outside the loop: 2736 to 3665 instructions
+per state: 314.6 children, 31.4 in the first iteration (most: 297); 56.8 nodes, 0.39 of them reached before in the same iteration; 509.7 tests, 44.9 of them of a view with slack 2 or more
+r10                                                        worst  26580 (21354672313211, 707 children) mean  13169
+C13 the first view as given                                worst  32743 (26154372332213, 903 children) mean  13438
+C13 the first of the farthest views first                  worst  32293 (54721631111111, 885 children) mean  13180
+C1  every child turns the rotated views                    worst  27051 (21354672313211, 707 children) mean  13546
+C1  one counter for each rotated view                      worst  26853 (21354672313211, 707 children) mean  13351
+C2  skip the test of a view that cannot prune              worst  27434 (21354672313211, 707 children) mean  13630
+C2  the view with the least slack first at every node      worst  26499 (21354672313211, 707 children) mean  13305
+C9  faces RBD, third view tested second                    worst  26895 (21354672313211, 707 children) mean  13190
+C9  faces RDB, second view tested second                   worst  26694 (45312672313211, 713 children) mean  13204
+C9  faces RDB, third view tested second                    worst  26973 (45312672313211, 713 children) mean  13223
+C9  faces BRD, second view tested second                   worst  32445 (52341671111111, 891 children) mean  13282
+C9  faces BRD, third view tested second                    worst  32256 (52341671111111, 891 children) mean  13301
+C9  faces BDR, second view tested second                   worst  32696 (14325671111111, 888 children) mean  13303
+C9  faces BDR, third view tested second                    worst  32669 (14325671111111, 888 children) mean  13323
+C9  faces DRB, second view tested second                   worst  29900 (41263751312222, 864 children) mean  13299
+C9  faces DRB, third view tested second                    worst  29900 (41263751312222, 864 children) mean  13319
+C9  faces DBR, second view tested second                   worst  27870 (13246571111111, 713 children) mean  13286
+C9  faces DBR, third view tested second                    worst  27906 (13246571111111, 713 children) mean  13306
+C10 first view unrolled, dispatch on the turn              worst  26420 (21354672313211, 707 children) mean  12991
+C10 first view unrolled, jal to the tail                   worst  26292 (21354672313211, 707 children) mean  12962
+C3  root's children at bound 11: least slack, then largest worst  26217 (36745213131131) mean  13585
+C3  root's children at bound 11: least slack, in move order worst  30018 (32156741112323) mean  13647
+C3  root's children at bound 11: most slack first          worst  29487 (47653213232111) mean  13643
+C3  root's children at bound 11: move order, same overhead worst  26870 (21354672313211) mean  13605
+C11 the first iteration skipped, three more root keys      worst  28197 mean  14078
+C4  the inverse when its root keys are farther             worst  28430 mean  14739
+C4  the better of the state and its inverse, in hindsight  worst  28430 mean  13927

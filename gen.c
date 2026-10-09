@@ -34,12 +34,11 @@
 #undef main
 
 enum {
-    BLOCKS = 630,                   /* block codes: 7 * 15 * 3 * 2 */
+    BLOCKS = 630,     /* block codes: 7 * 15 * 3 * 2 */
     PATTERNS = BLOCKS * ORIENTATIONS,
-    ROW_BYTES = 183,                /* 729 values of 2 bits; the last byte
-                                       holds one */
-    ROW_STRIDE = 196,               /* tables.s: 3 addresses, the row, 1 pad */
-    SLACKS = 12,                    /* slack 0..11 */
+    ROW_BYTES = 183,  /* 729 values of 2 bits; the last byte holds one */
+    ROW_STRIDE = 196, /* tables.s: 3 addresses, the row, 1 pad */
+    SLACKS = 12,      /* slack 0..11 */
     SEARCH_STATES = SLACKS * 3
 };
 

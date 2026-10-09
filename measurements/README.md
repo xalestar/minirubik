@@ -168,6 +168,16 @@ scramble `24173562322133`, the reference vector) in one run. v4:
 Alone, the solved case takes 1,240 instructions, the 3-move scramble 2,569
 and an invalid string (`1234567111111a`) 192, with exit code 2.
 
+r10, the same run:
+
+| Model | Exit | Cycles | iret |
+| :--- | :---: | ---: | ---: |
+| `RV32_ISS` | 0 | 15,365 | 15,365 |
+| `RV32_5S` | 0 | 19,675 | 15,364 |
+| `RV32_6S_DUAL` | 0 | 19,605 | 15,364 |
+
+Alone at r10: solved 1,255, the 3-move scramble 2,408, invalid 192.
+
 v3 (`c11831f`) and before:
 
 | Model | Exit | Cycles | iret | Cycles at `f881296` | Cycles at `80b9446` |
@@ -229,7 +239,9 @@ since the assignment defines the measure as `--iret` on `RV32_ISS`.
   itself gains nothing (903), and the labelling that does gain needs 6
   lookups per node for 13% fewer children.
 * `experiments/v4-nodes.c`, output `experiments/v4-nodes.txt`: the same
-  kind of model for the v4 loop at `05aafc2`. Worst state: 903 children, 155 nodes;
+  kind of model for the v4 loop at `05aafc2`; it reads that commit's
+  `ida.c`, so it builds there (`v4-ideas.c` below models the loop at r10).
+  Worst state: 903 children, 155 nodes;
   27.8% turning the three views (11 per child), 40.1% the tests (9 per view
   reached; a child reaches 1.00, 0.42 and 0.25 of them on average), 22.0%
   per node, and 10.0% (3,591) outside the loop. Over all states the part
@@ -274,12 +286,52 @@ the state as given, not the views as searched, so a mistake in turning the
 faces back fails the case. The printed moves of 43 states were also applied
 to the cube arrays of `solver.c` on the host: all solve.
 
-For r8, `experiments/v4-nodes.c` was not rebuilt; the counts are from a
-copy of its search with the catch-up added. With one counter for each
-rotated view (the second view waits for the first to pass) it counted
-5,067, so that form was not built. On `RV32_5S` the three test cases take
-20,507 cycles for 16,219 instructions at r8 and 20,190 for 16,275 at r7:
-fewer instructions, more cycles.
+On `RV32_5S` the three test cases take 20,507 cycles for 16,219
+instructions at r8 and 20,190 for 16,275 at r7: fewer instructions, more
+cycles.
+
+### Counted and not built
+
+`experiments/v4-ideas.c`, output `experiments/v4-ideas.txt`: a model of
+the loop at r10 with a switch for each variant. For three states its loop
+count equals the count of an instruction-level profile of the assembly
+(23,433, 8,412 and 23,300). Each line is the worst and the mean over the
+2,644 states of the measured count with the loop replaced by the variant's.
+
+| Variant | Worst | Mean |
+| :--- | ---: | ---: |
+| r10 | 26,580 | 13,169 |
+| the first view as given (before r9) | 32,743 | 13,438 |
+| the first of the farthest views first (r9 without the tie rule) | 32,293 | 13,180 |
+| every child turns the rotated views (before r8) | 27,051 | 13,546 |
+| one catch-up counter for each rotated view | 26,853 | 13,351 |
+| skip the test of a view with slack 2 or more, which cannot prune | 27,434 | 13,630 |
+| the view with the least slack first at every node | 26,499 | 13,305 |
+| the other 11 orders of the faces and of the two rotated tests | 26,694 to 32,696 | 13,190 to 13,323 |
+| first view's three turns unrolled, dispatch on the turn | 26,420 | 12,991 |
+| the same with a `jal` to the shared tail | 26,292 | 12,962 |
+| root's children at bound 11 by least slack, ties by the largest slack | 26,217 | 13,585 |
+| the same, ties in move order | 30,018 | 13,647 |
+| the same, most slack first | 29,487 | 13,643 |
+| the first iteration skipped, paid with three more root keys | 28,197 | 14,078 |
+| the inverse state when its root keys are farther | 28,430 | 14,739 |
+
+A state has 314.6 children on average, 31.4 of them in the first
+iteration; 0.39 of its 56.8 nodes were reached before in the same
+iteration; 44.9 of its 509.7 tests are of a view that cannot prune. The
+unrolled forms need 108 more instructions, which would make `.text` 3,236
+bytes against gcc's 3,092. Ordering the root's children moves the worst
+case by -1% or +13% depending on how ties are broken, and the mean up by
+3%: the order in which the last iteration meets a solution is luck, and no
+key of the slacks predicts it.
+
+Two more variants were counted in throwaway host runs on r8 and not kept
+as files: a budget per first move at bound 11 with a restart in a rotated
+frame (25,786 in the loop at the best budget, against 29,807; r9 reaches
+23,563 in the same count), and children ordered by the size of their
+subtree in the iteration before (34,592: at the root 99.2% of the largest
+subtrees are a first move of a solution, but they are also the dearest to
+search).
 
 ## Smaller experiments
 
