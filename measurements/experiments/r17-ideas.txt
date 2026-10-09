@@ -1,0 +1,109 @@
+$ ./r13-rule measurements/sweep-r13.txt
+r13 loop: worst 20273 (42651372213311) mean 9530, children 212.8, nodes 40.0, cut by the rule 0.0 a state, 0 states start a bound higher
+rule in the search (+3 a passing child): worst 15749 (32674152113333) mean 7632, children 136.8, nodes 27.3, cut by the rule 9.0 a state, 0 states start a bound higher
+rule in the search and at the root: worst 15749 (32674152113333) mean 7580, children 134.7, nodes 27.1, cut by the rule 9.0 a state, 616 states start a bound higher
+
+$ ./r14-home
+orientations by moves from home: 0:1 1:2 2:12 3:64 4:274 5:336 6:40  mean 4.44
+orientations by clockwise quarter turns to home: 0:1 1:2 2:4 3:12 4:36 5:76 6:152 7:218 8:164 9:56 10:8  mean 6.73
+any move: 459270 keys: 4.44 steps and 7.44 quarter turns a key, most steps 6, largest change of the distance on the way 6, wrong 0
+clockwise quarter turns: 459270 keys: 6.73 steps and 6.73 quarter turns a key, most steps 10, largest change of the distance on the way 8, wrong 0
+
+$ ./r14-first-moves measurements/sweep-r14.txt
+normal order (model of the loop as built)                        worst  15459 (32674152113333) mean   7490
+natural order, composed from parts                               worst  15459 (32674152113333) mean   7490
+oracle at the root: first child at distance 10                   worst  14594 (35714623111322) mean   7345
+oracle at the root: cheapest child that finds                    worst  12008 (41576322212222) mean   6935
+all nine by least sum of key distances (+350)                    worst  15626 (25413672323111) mean   7893
+all nine by largest sum (+350)                                   worst  18897 (63512743313333) mean   7882
+all nine by least max, then least sum (+350)                     worst  15626 (25413672323111) mean   7955
+all nine by least first view, then sum (+350)                    worst  15761 (24615731122313) mean   7956
+all nine by least min, then sum (+350)                           worst  15626 (25413672323111) mean   7796
+first by least sum, then the natural order again (+350)          worst  18225 (73615243123313) mean   7856
+least-sum child is at distance 10 in 2566 of 2644 states
+sum of key distances of the 9 children: sum: at distance 10 / at distance 11
+one turn of each face first: R B D, R2 B2 D2, R' B' D' (+150)    worst  17353 (42137561123333) mean   7642
+half turns first: R2 B2 D2, R B D, R' B' D' (+150)               worst  15419 (76342513322111) mean   7581
+faces D B R at the root only (+20)                               worst  15504 (74325163131323) mean   7476
+back turns first at the root: R' R2 R ... (+20)                  worst  16221 (45621732233333) mean   7459
+first moves that lead to a distance-11 state, by place in the order R R2 R' B B2 B' D D2 D': 173 333 155 158 435 149 149 384 176
+all nine by most views with slack, then least sum (+350)         worst  15626 (25413672323111) mean   7908
+all nine by fewest views with slack, then largest sum (+350)     worst  18897 (63512743313333) mean   7878
+first moves that pass, by views with slack: at distance 10 / 11: 0: 0 / 0 1: 48 / 360 2: 3216 / 552 3: 18420 / 1080
+first moves that pass: 21684 at distance 10 (mean search 1425), 1992 at distance 11 (mean search 1622)
+first the first move with most nodes before, then the natural order again (+150) worst  14487 (73542163321133) mean   7592
+first the first move with most children before, then the natural order again (+150) worst  14487 (73542163321133) mean   7592
+first the first move with most nodes before, then the natural order again (+300) worst  14637 (73542163321133) mean   7742
+first the first move with most children before, then the natural order again (+300) worst  14637 (73542163321133) mean   7742
+first the first move with most nodes before, then the natural order again (+450) worst  14787 (73542163321133) mean   7892
+first the first move with most children before, then the natural order again (+450) worst  14787 (73542163321133) mean   7892
+the first move with most nodes before does not find the answer in 12 states; no first move had a subtree before in 48
+r17: start at the first move with most nodes before (+200)       worst  14537 (73542163321133) mean   7641
+start at the first in order with at least 1/8 of the most nodes (+260) worst  14698 (74513263121222) mean   7762
+start at the first in order with at least 2/8 of the most nodes (+260) worst  14698 (74513263121222) mean   7766
+start at the first in order with at least 3/8 of the most nodes (+260) worst  14698 (74513263121222) mean   7770
+start at the first in order with at least 4/8 of the most nodes (+260) worst  14698 (74513263121222) mean   7760
+start at the first in order with at least 5/8 of the most nodes (+260) worst  14673 (32517463131311) mean   7710
+start at the first in order with at least 6/8 of the most nodes (+260) worst  14673 (32517463131311) mean   7713
+start at the first in order with at least 7/8 of the most nodes (+260) worst  14597 (73542163321133) mean   7696
+start at the first in order with at least 2 nodes fewer than the most (+260) worst  14698 (74513263121222) mean   7765
+start at the last in order with the most nodes (+200)            worst  14537 (73542163321133) mean   7632
+start at the first move with the second most nodes (+260)        worst  15356 (36542712121322) mean   7694
+all nine by most children in the iteration before (+400)         worst  14751 (73542163321133) mean   7860
+all nine by fewest children in the iteration before (+400)       worst  17114 (64157321133212) mean   7886
+all nine by most nodes in the iteration before (+400)            worst  14751 (73542163321133) mean   7860
+all nine by deepest node in the iteration before (+400)          worst  16089 (35267141321132) mean   7900
+all nine by deepest, then fewest children (+400)                 worst  16170 (45273162222122) mean   7958
+all nine by deepest, then most children (+400)                   worst  14751 (73542163321133) mean   7859
+child with most children / deepest node / most nodes before is at distance 10 in 2620 / 2598 / 2620 of 2644
+deepest node under a root child in the iteration before: depth: at distance 10 / 11
+budget 2 pops a first move, then no budget (+2 a pop)            worst  16948 (47156322313232) mean   7506
+budget 2 pops, then only the first moves that were cut           worst  16948 (47156322313232) mean   7506
+budget 3 pops a first move, then no budget (+2 a pop)            worst  17399 (47156322313232) mean   7505
+budget 3 pops, then only the first moves that were cut           worst  17399 (47156322313232) mean   7505
+budget 4 pops a first move, then no budget (+2 a pop)            worst  16786 (47156322313232) mean   7486
+budget 4 pops, then only the first moves that were cut           worst  16786 (47156322313232) mean   7486
+budget 5 pops a first move, then no budget (+2 a pop)            worst  16807 (74653213133222) mean   7497
+budget 5 pops, then only the first moves that were cut           worst  16807 (74653213133222) mean   7497
+budget 6 pops a first move, then no budget (+2 a pop)            worst  17052 (74653213133222) mean   7505
+budget 6 pops, then only the first moves that were cut           worst  17052 (74653213133222) mean   7505
+budget 8 pops a first move, then no budget (+2 a pop)            worst  18908 (54217362233213) mean   7507
+budget 8 pops, then only the first moves that were cut           worst  18908 (54217362233213) mean   7507
+budget 10 pops a first move, then no budget (+2 a pop)           worst  17400 (64321572111131) mean   7510
+budget 10 pops, then only the first moves that were cut          worst  17400 (64321572111131) mean   7510
+budget 12 pops a first move, then no budget (+2 a pop)           worst  18082 (64321572111131) mean   7527
+budget 12 pops, then only the first moves that were cut          worst  18082 (64321572111131) mean   7527
+budget 16 pops a first move, then no budget (+2 a pop)           worst  16774 (17265433111313) mean   7521
+budget 16 pops, then only the first moves that were cut          worst  16774 (17265433111313) mean   7521
+budget 20 pops a first move, then no budget (+2 a pop)           worst  15596 (32674152113333) mean   7532
+budget 20 pops, then only the first moves that were cut          worst  15596 (32674152113333) mean   7532
+budget 28 pops a first move, then no budget (+2 a pop)           worst  15596 (32674152113333) mean   7539
+budget 28 pops, then only the first moves that were cut          worst  15596 (32674152113333) mean   7539
+budgets 2, 5 pops in turn, then no budget                        worst  16948 (47156322313232) mean   7506
+budgets 3, 6 pops in turn, then no budget                        worst  17399 (47156322313232) mean   7505
+budgets 4, 8 pops in turn, then no budget                        worst  16786 (47156322313232) mean   7486
+budgets 5, 10 pops in turn, then no budget                       worst  16807 (74653213133222) mean   7497
+budgets 6, 12 pops in turn, then no budget                       worst  17052 (74653213133222) mean   7505
+budgets 8, 16 pops in turn, then no budget                       worst  18908 (54217362233213) mean   7507
+budgets 10, 20 pops in turn, then no budget                      worst  17400 (64321572111131) mean   7510
+budgets 12, 28 pops in turn, then no budget                      worst  18082 (64321572111131) mean   7527
+
+$ ./r16-bnb measurements/sweep-r16.txt
+r16 measured: worst 13986 mean 6378; bounds 10 and 11 in one pass (+120 at the first answer): worst 13601 (32674152113333) mean 6473
+
+$ python3 r16-inverse.py measurements/sweep-r16.txt ./r16-far
+states 2644 equal to their inverse 50 inverse not in the list 0
+as built: worst 13986 mean 6378
+oracle, the cheaper of the state and its inverse (+1300 for the inverse): worst 11815 mean 6084
+inverse when it has the larger h, then larger sum of the keys (all pay +1300): worst 15286 mean 7440, inverse taken for 480 states
+inverse when it has the larger sum of the keys (all pay +1300): worst 15286 mean 7477, inverse taken for 456 states
+inverse when it has the larger h only (all pay +1300): worst 15286 mean 7512, inverse taken for 192 states
+h of the state and of its inverse: [((9, 9), 984), ((9, 10), 192), ((10, 9), 192), ((10, 10), 1252), ((11, 11), 24)]
+32674152113333 13986 (9, 8, 9) inverse 62157342132212 8789 (8, 9, 8)
+51732643121213 13962 (8, 9, 9) inverse 25471631312213 8692 (9, 8, 8)
+27546312231122 13866 (9, 9, 8) inverse 71643523331213 8818 (8, 8, 9)
+24751362321113 13636 (8, 8, 8) inverse 51624731312123 6778 (9, 8, 9)
+42137561123333 13538 (9, 8, 9) inverse 32416753121222 8694 (8, 9, 8)
+74256313111232 13534 (8, 8, 8) inverse 73624513121132 6774 (9, 8, 9)
+47251632131312 13519 (8, 9, 9) inverse 53714622233111 8597 (9, 8, 8)
+64157321133212 13451 (8, 8, 8) inverse 37624152311213 6864 (9, 8, 9)

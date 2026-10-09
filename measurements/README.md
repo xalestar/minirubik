@@ -530,6 +530,29 @@ read the `ida.c` and `tables.h` of r11 (`d1b8fed`); `r11-keys.c` needs only
   -Tdata=0x10000000`) gives the Ripes count of all 2,644 states of r11
   exactly, in 0.13 s. It was used to try changes before a Ripes sweep.
 
+### Round 2: counted and not built
+
+The host programs for these counts are `experiments/r13-rule.c`,
+`r14-home.c`, `r14-first-moves.c`, `r16-bnb.c`, `r16-inverse.py` (with
+`r16-far.c`); their output is `experiments/r17-ideas.txt`.
+
+| Idea | Count | Against |
+| :--- | :--- | :--- |
+| a budget of pops for each first move at bound 11 | model on r14: 15,596 to 18,908 for budgets of 2 to 28 pops | 15,459 |
+| first moves by their key distances | model on r14: 15,626 to 18,897 | 15,459 |
+| another fixed order of the first moves | model on r14: 15,419 (half turns first) to 17,353 | 15,459 |
+| the first in order with at least k/8 of the most nodes, or the second most | model on r14: 14,597 to 15,356; r17's rule 14,537 | 15,459 |
+| bounds 10 and 11 in one pass | model on r16: 13,601, mean 6,473 | 13,986, 6,378 |
+| the inverse state when its root distances are larger | r16 sweep: 15,286; with hindsight 11,815 | 13,986 |
+| six views (mirror images) | the subgroup is its own mirror image: no new key | |
+| coordinates of the rotated views through tables | by count 684 instead of 842 | r17: 13,064 |
+| replay on two views | by count -57 | r17: 13,064 |
+
+The first-move models charge a fixed cost that is in the name of each line
+of the output. The idea that was built from them (r17) measured 922 less
+than r16 on the worst state, where the model on r14 had said 672 to 972
+less.
+
 ## Smaller experiments
 
 * `experiments/heuristics.c`, output `experiments/heuristics.txt`: IDA*
