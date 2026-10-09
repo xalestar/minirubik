@@ -12,13 +12,16 @@
  *   - IDA* node counts over the 2,644 distance-11 states when the heuristic
  *     is the maximum of the v2 heuristic over each of those sets of images,
  *     next to the three-cubie pattern database without symmetry.
- * Needs tables.h (make tables.h). Run from the repository root:
+ * Needs the v3 tables.h (make tables.h at f5d417a). Run from the repository
+ * root:
  *   cc -O2 -w measurements/experiments/symmetry.c -o symmetry && ./symmetry
  */
 #define main solver_main
 #include "../../solver.c"
 #undef main
-#include "../../tables.h"
+#ifndef NO_MAIN
+#include "../../tables.h" /* the v3 tables: build this file at f5d417a */
+#endif
 
 /* ---- geometry: 8 corner positions, 24 facelet slots = 3 * pos + axis ---- */
 static const int V[8][3] = { /* x: L->R, y: D->U, z: B->F; report numbering */
@@ -313,6 +316,7 @@ static uint32_t key3(const state_t *s)
     return rank_state(&t) / 729 * 27 + k;
 }
 
+#ifndef NO_MAIN
 int main(void)
 {
     build_syms();
@@ -513,3 +517,4 @@ int main(void)
     }
     return 0;
 }
+#endif

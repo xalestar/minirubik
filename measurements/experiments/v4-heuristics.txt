@@ -1,0 +1,21 @@
+./v4-heuristics PT03x3 PT03x6 PT013x3 PT015x6 PT0346x3 S036Ox3 S045Ox6 B035.146WQOx6 B035.146QOx3 B045.136QOx6 B01.4QOx6 B012.35QOx3 B012.35QOx6 B05.16.34Ox3 B06.15.24WQOx2 B06.15.24WQOx3 B06.15.24WQOx6 B03.14.56WQOx6 B012.35QOx3+B035.146QOx3 B06.15.24WQOx3+B012.35QOx3
+PT03x3 [45360 max 8]       mean_h=6.595 exact= 202497 | d11 gen mean   14074 worst   42041 | exp mean   2349 worst   7009 | ref gen   14331 exp   2393
+PT03x6 [45360 max 8]       mean_h=6.775 exact= 254922 | d11 gen mean    8862 worst   27182 | exp mean   1480 worst   4533 | ref gen    8469 exp   1416
+PT013x3 [136080 max 9]     mean_h=7.228 exact= 551141 | d11 gen mean    4328 worst   12761 | exp mean    725 worst   2130 | ref gen    4677 exp    784
+PT015x6 [136080 max 9]     mean_h=7.370 exact= 667046 | d11 gen mean    2934 worst    8879 | exp mean    493 worst   1483 | ref gen    3033 exp    510
+PT0346x3 [408240 max 9]    mean_h=7.891 exact=1344410 | d11 gen mean    1164 worst    4157 | exp mean    198 worst    696 | ref gen    1044 exp    179
+S036Ox3 [153090 max 9]     mean_h=7.644 exact= 814825 | d11 gen mean    1647 worst    9807 | exp mean    278 worst   1636 | ref gen    2355 exp    397
+S045Ox6 [153090 max 9]     mean_h=7.688 exact= 924362 | d11 gen mean    1318 worst    6882 | exp mean    223 worst   1150 | ref gen    1611 exp    273
+B035.146WQOx6 [102060 max 9] mean_h=7.607 exact= 813186 | d11 gen mean    1399 worst    4878 | exp mean    237 worst    816 | ref gen    1410 exp    240
+B035.146QOx3 [204120 max 10] mean_h=7.737 exact=1005461 | d11 gen mean    1130 worst    3654 | exp mean    192 worst    613 | ref gen    1152 exp    197
+B045.136QOx6 [204120 max 10] mean_h=7.921 exact=1254835 | d11 gen mean     625 worst    1679 | exp mean    108 worst    284 | ref gen     645 exp    113
+B01.4QOx6 [153090 max 9]   mean_h=7.696 exact= 940469 | d11 gen mean    1227 worst    4913 | exp mean    208 worst    822 | ref gen    1767 exp    299
+B012.35QOx3 [306180 max 10] mean_h=8.003 exact=1462599 | d11 gen mean     598 worst    1842 | exp mean    104 worst    311 | ref gen     297 exp     55
+B012.35QOx6 [306180 max 10] mean_h=8.173 exact=1835516 | d11 gen mean     369 worst    1002 | exp mean     66 worst    171 | ref gen     177 exp     35
+B05.16.34Ox3 [459270 max 10] mean_h=8.028 exact=1588896 | d11 gen mean     650 worst    1919 | exp mean    112 worst    323 | ref gen     579 exp    101
+B06.15.24WQOx2 [459270 max 10] mean_h=8.089 exact=1673466 | d11 gen mean     648 worst    4092 | exp mean    112 worst    686 | ref gen     822 exp    143
+B06.15.24WQOx3 [459270 max 10] mean_h=8.234 exact=2000558 | d11 gen mean     317 worst     903 | exp mean     57 worst    155 | ref gen     258 exp     49
+B06.15.24WQOx6 [459270 max 10] mean_h=8.234 exact=2000558 | d11 gen mean     317 worst     903 | exp mean     57 worst    155 | ref gen     258 exp     49
+B03.14.56WQOx6 [459270 max 10] mean_h=8.366 exact=2383353 | d11 gen mean     222 worst     786 | exp mean     41 worst    135 | ref gen     189 exp     37
+B012.35QOx3+B035.146QOx3 [306180 max 10, 204120 max 10] mean_h=8.081 exact=1613419 | d11 gen mean     429 worst    1224 | exp mean     76 worst    208 | ref gen     261 exp     49
+B06.15.24WQOx3+B012.35QOx3 [459270 max 10, 306180 max 10] mean_h=8.311 exact=2195784 | d11 gen mean     253 worst     645 | exp mean     46 worst    112 | ref gen     138 exp     29
