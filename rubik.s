@@ -285,10 +285,12 @@ coords_mate:
 # root_dist: a2 = pattern row, a5 = 2 * orientation rank -> a0 = the distance
 # of that key, a1 = the distance modulo 3. Walks home: a neighbour one closer
 # is one whose value is one less modulo 3, and it is never on the face of
-# the step before. Needs s5 = orient_turn and s8 = the solved row.
+# the step before. One block per face, as in the search. Needs s5 s6 s7 =
+# orient_turn of R, B, D and s8 = the solved row.
 root_dist:
     li   a0, 0
-    li   a4, -1                 # the face of the step before: 0, 4, 8
+    li   a4, -1                 # the face of the step before
+    li   t2, 1
     srli t0, a5, 3
     add  t0, t0, a2
     lbu  t0, 12(t0)
@@ -301,20 +303,16 @@ root_step:
     beqz a5, root_done
 root_search:
     addi t5, t5, -1             # the value to look for
-    bgez t5, root_face
+    bgez t5, root_R
     li   t5, 2
-root_face:
-    li   t2, 0                  # face: 0, 4, 8 into the row
-    mv   t3, s5                 # its orient_turn
-root_next_face:
-    beq  t2, a4, root_skip
+root_R:
+    beqz a4, root_B
     mv   a3, a2
     mv   a6, a5
     li   t4, 3
-root_turn:
-    add  t0, a3, t2
-    lw   a3, 0(t0)
-    add  t0, t3, a6
+root_turn_R:
+    lw   a3, 0(a3)
+    add  t0, s5, a6
     lhu  a6, 0(t0)
     srli t0, a6, 3
     add  t0, t0, a3
@@ -322,17 +320,53 @@ root_turn:
     andi t1, a6, 6
     srl  t0, t0, t1
     andi t0, t0, 3
-    beq  t0, t5, root_closer
+    beq  t0, t5, root_closer_R
     addi t4, t4, -1
-    bnez t4, root_turn
-root_skip:
-    addi t2, t2, 4
-    addi t3, t3, ORIENT_FACE
-    j    root_next_face
+    bnez t4, root_turn_R
+root_B:
+    beq  a4, t2, root_D
+    mv   a3, a2
+    mv   a6, a5
+    li   t4, 3
+root_turn_B:
+    lw   a3, 4(a3)
+    add  t0, s6, a6
+    lhu  a6, 0(t0)
+    srli t0, a6, 3
+    add  t0, t0, a3
+    lbu  t0, 12(t0)
+    andi t1, a6, 6
+    srl  t0, t0, t1
+    andi t0, t0, 3
+    beq  t0, t5, root_closer_B
+    addi t4, t4, -1
+    bnez t4, root_turn_B
+root_D:
+    mv   a3, a2                 # one of the faces has a closer neighbour
+    mv   a6, a5
+root_turn_D:
+    lw   a3, 8(a3)
+    add  t0, s7, a6
+    lhu  a6, 0(t0)
+    srli t0, a6, 3
+    add  t0, t0, a3
+    lbu  t0, 12(t0)
+    andi t1, a6, 6
+    srl  t0, t0, t1
+    andi t0, t0, 3
+    beq  t0, t5, root_closer_D
+    j    root_turn_D
+root_closer_D:
+    li   a4, 2
+    j    root_closer
+root_closer_B:
+    li   a4, 1
+    j    root_closer
+root_closer_R:
+    li   a4, 0
 root_closer:
     mv   a2, a3
     mv   a5, a6
-    mv   a4, t2
     addi a0, a0, 1
     j    root_step
 root_done:
