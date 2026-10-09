@@ -47,14 +47,16 @@ msg_invalid: .string " -> invalid\n"
 pair_base:   .byte 0, 5, 9, 12, 14, 0, 0, 0
 
 .bss
-# One 32-byte slot per depth, 0..11, and one in front of the root's:
+# One 32-byte slot per depth, 0..11, and two in front of the root's: the
+# pop of the root reads the first of them as its parent and finds face 3
+# there; the second is what that pop reads in front of it.
 #   0 4 8     the pattern row of this node in each view (words)
 #  12 14 16   2 * its orientation rank in each view
 #  18 turns left on the face of the child being searched (3..1)
 #  19 that face (0 R, 1 B, 2 D); 3 in the slot in front: no parent face
 #  20 24 28   the next_state row of this node in each view (words)
 # Move k of the answer is bytes 19 and 18 of slot k.
-guard:   .zero 32
+guard:   .zero 64
 frames:  .zero 384
 rotated: .zero 32               # the state string rotated once, and twice
 
@@ -341,7 +343,8 @@ root_done:
 #   s3 s10 s11  the child's offset into next_state in each view
 #   s5 s6 s7  orient_turn of R, B, D        t2 next_state
 #   s4 the node's slot    s9 frames         s8 the last slot that is expanded
-#   t4 turns left on this face    t5 this face    t6 the parent's face
+#   t4 turns left on this face    t6 the parent's face, then this face for
+#   a child that passes           t5 the face a pop resumes
 #   t3 a1  the constants 1 and 2            t0 t1 scratch
 solve:
     mv   s3, ra
@@ -459,7 +462,7 @@ turn_R:
     add  t0, t0, s2
     lb   s11, 0(t0)
     bltz s11, next_R
-    li   t5, 0
+    li   t6, 0                  # the child's parent face
     j    passed
 next_R:
     addi t4, t4, -1
@@ -511,7 +514,7 @@ turn_B:
     add  t0, t0, s2
     lb   s11, 0(t0)
     bltz s11, next_B
-    li   t5, 1
+    li   t6, 1                  # the child's parent face
     j    passed
 next_B:
     addi t4, t4, -1
@@ -562,13 +565,12 @@ turn_D:
     add  t0, t0, s2
     lb   s11, 0(t0)
     bltz s11, next_D
-    li   t5, 2
+    li   t6, 2                  # the child's parent face
     j    passed
 next_D:
     addi t4, t4, -1
     bnez t4, turn_D
 pop:
-    beq  s4, s9, deepen
     lw   a2, 0(s4)              # this node is the parent's child in progress
     lw   a3, 4(s4)
     lw   a4, 8(s4)
@@ -584,10 +586,11 @@ pop:
     lbu  t6, -13(s4)            # the face of the slot before
     beqz t5, next_R
     beq  t5, t3, next_B
-    j    next_D
+    beq  t5, a1, next_D
+    j    deepen                 # face 3: the slot in front of the root's
 passed:
     sb   t4, 18(s4)             # this move, for the resume and the answer
-    sb   t5, 19(s4)
+    sb   t6, 19(s4)
     beq  s4, s8, found          # no move left: distance 0 in every view
     addi s4, s4, FRAME          # descend: the child gets its own slot
     sw   a2, 0(s4)
@@ -602,8 +605,7 @@ passed:
     sw   s0, 20(s4)
     sw   s1, 24(s4)
     sw   s2, 28(s4)
-    mv   t6, t5
-    bnez t5, first_R            # the child's coordinates are in the registers:
+    bnez t6, first_R            # the child's coordinates are in the registers:
     j    first_B                # its first face, R, or B after an R
 found:
     sub  a0, s4, s9

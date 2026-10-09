@@ -66,9 +66,10 @@ to solved and has the expected length 11.
 | `sweep-r4.txt` | `f881296` orientation test first | 1,150,121 | 3,397,155 | `41752632313211` |
 | `sweep-v3.txt` | `c11831f` pattern database through two rotations | 458,634 | 1,345,083 | `21354672313211` |
 | `sweep-v4.txt` | `05aafc2` v4: 2-bit pattern database over block codes, three views | 14,723 | 35,794 | `26154372332213` |
-| `sweep-r5.txt` | r5: a child's first face starts from the registers | 14,343 | 34,730 | `26154372332213` |
+| `sweep-r5.txt` | `b5990e0` r5: a child's first face starts from the registers | 14,343 | 34,730 | `26154372332213` |
+| `sweep-r6.txt` | r6: shorter descent and pop | 14,277 | 34,468 | `26154372332213` |
 
-All ten sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All eleven sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -107,7 +108,8 @@ comparable; `sweep-v3.txt` is sorted.
 | v3 GUI build (`rubik-gui.s`, renderer in) | | 3,024 | 121,486 + 648 |
 | gcc -O2, v4 C (`ripes_ref.c`) | 49,983 | 2,492 | 123,650 `.rodata` + 35 `.sdata` |
 | v4 `rubik.s` at `05aafc2` | 13,540 | 2,436 | 128,172 + 448 |
-| r5 | 13,211 | 2,440 | 128,172 + 448 |
+| r5 `b5990e0` | 13,211 | 2,440 | 128,172 + 448 |
+| r6 | 13,143 | 2,436 | 128,172 + 480 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -238,6 +240,7 @@ counts do not change. Worst state `26154372332213` in every row.
 | :--- | :--- | :--- | ---: | ---: |
 | `sweep-v4.txt` | | | 14,723 | 35,794 |
 | `sweep-r5.txt` | r5: a node that was just a child starts its first face from the registers, at the face after its parent's: no 6 loads, no skip test | 7 for each of 152 descents: -1,064 | 14,343 | 34,730 |
+| `sweep-r6.txt` | r6: the face block of a passing child sets the parent's face itself (no `mv`); the pop of the root finds face 3 in the slot in front and goes to `deepen` (no root test in every pop) | 1 for each of 152 descents and of 142 pops (10 nodes are on the answer and never pop), +16 for each of the 2 pops of a root: -262 | 14,277 | 34,468 |
 
 ## Smaller experiments
 
