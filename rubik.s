@@ -283,10 +283,11 @@ coords_mate:
 
 # root_dist: a2 = pattern row, a5 = 2 * orientation rank -> a0 = the distance
 # of that key, a1 = the distance modulo 3. Walks home: a neighbour one closer
-# is one whose value is one less modulo 3. Needs s5 = orient_turn and
-# s8 = the solved row.
+# is one whose value is one less modulo 3, and it is never on the face of
+# the step before. Needs s5 = orient_turn and s8 = the solved row.
 root_dist:
     li   a0, 0
+    li   a4, -1                 # the face of the step before: 0, 4, 8
     srli t0, a5, 3
     add  t0, t0, a2
     lbu  t0, 12(t0)
@@ -305,6 +306,7 @@ root_face:
     li   t2, 0                  # face: 0, 4, 8 into the row
     mv   t3, s5                 # its orient_turn
 root_next_face:
+    beq  t2, a4, root_skip
     mv   a3, a2
     mv   a6, a5
     li   t4, 3
@@ -322,12 +324,14 @@ root_turn:
     beq  t0, t5, root_closer
     addi t4, t4, -1
     bnez t4, root_turn
+root_skip:
     addi t2, t2, 4
     addi t3, t3, ORIENT_FACE
     j    root_next_face
 root_closer:
     mv   a2, a3
     mv   a5, a6
+    mv   a4, t2
     addi a0, a0, 1
     j    root_step
 root_done:

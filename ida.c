@@ -155,14 +155,18 @@ static uint8_t mod3(uint16_t b, uint16_t o)
 
 /* The distance of a key, by walking home: a neighbour one closer is the one
  * whose value is one less modulo 3, since neighbours differ by at most 1.
+ * The face of the step before is not tried: two turns of one face are one
+ * turn, which cannot bring a key two closer.
  */
 static uint8_t root_dist(uint16_t b, uint16_t o)
 {
-    uint8_t d = 0, v = mod3(b, o);
+    uint8_t d = 0, v = mod3(b, o), last = NO_FACE;
     while (b != BLOCK_SOLVED || o) {
         uint8_t want = v ? (uint8_t) (v - 1U) : 2, found = 0;
         for (uint8_t face = 0; face < 3 && !found; ++face) {
             uint16_t nb = b, no = o;
+            if (face == last)
+                continue;
             for (uint8_t t = 0; t < 3 && !found; ++t) {
                 nb = block_turn[face][nb];
                 no = orient_turn[face][no];
@@ -170,6 +174,7 @@ static uint8_t root_dist(uint16_t b, uint16_t o)
                 if (mod3(nb, no) == want) {
                     b = nb;
                     o = no;
+                    last = face;
                     found = 1;
                 }
             }
