@@ -1,0 +1,44 @@
+$ ./r11-keys list
+1575 subgroups of order 8 of S7, 2644 states at distance 11
+
+$ for i in 0..13: ./r11-keys run $i 14 0 3000     (every subgroup, twists as stored; best 10 by worst loop cost; 1267 is the r11 key)
+936 0123456,0253146,0413526,0543216,6143250,6213540,6453120,6523410 c=0000000 kids mean 212.8 worst 601 | loop mean 6733 worst 18093 | root h 9.331 | failed worst 12075
+321 0123456,0126453,0253146,0256143,0413526,0416523,0543216,0546213 c=0000000 kids mean 278.9 worst 684 | loop mean 8837 worst 20995 | root h 8.886 | failed worst 15361
+914 0123456,0236451,0361452,0612453,4163052,4216053,4321056,4632051 c=0000000 kids mean 291.1 worst 755 | loop mean 9260 worst 23184 | root h 9.032 | failed worst 18253
+1267 0123456,0543216,1023465,1643205,5043261,5623401,6143250,6523410 c=0000000 kids mean 314.6 worst 714 | loop mean 9943 worst 23433 | root h 8.974 | failed worst 14669
+514 0123456,0143256,0213546,0253146,0413526,0453126,0523416,0543216 c=0000000 kids mean 273.1 worst 770 | loop mean 8617 worst 24073 | root h 8.946 | failed worst 22754
+935 0123456,0253146,0413526,0543216,6123450,6253140,6413520,6543210 c=0000000 kids mean 273.8 worst 768 | loop mean 8643 worst 25079 | root h 8.946 | failed worst 22640
+305 0123456,0125634,2103654,2105436,3150624,3152406,5130426,5132604 c=0000000 kids mean 289.4 worst 803 | loop mean 9205 worst 27081 | root h 9.032 | failed worst 18809
+933 0123456,0253146,0413526,0543216,3120456,3250146,3410526,3540216 c=0000000 kids mean 283.2 worst 867 | loop mean 8967 worst 27885 | root h 8.886 | failed worst 15557
+1111 0123456,0423165,1024356,1324065,3120465,3420156,4021365,4321056 c=0000000 kids mean 381.9 worst 932 | loop mean 12152 worst 29445 | root h 8.590 | failed worst 25548
+703 0123456,0154326,1024356,1053426,3420156,3451026,4321056,4350126 c=0000000 kids mean 382.6 worst 1028 | loop mean 12162 worst 33581 | root h 8.637 | failed worst 21634
+1560 tables counted, 15 refused: the three views do not pin the solved state
+
+$ for i in 0..13: ./r11-keys run $i 14 1 450      (every subgroup in every frame; best 12 by worst loop cost)
+936 0123456,0253146,0413526,0543216,6143250,6213540,6453120,6523410 c=0000000 kids mean 212.8 worst 601 | loop mean 6733 worst 18093 | root h 9.331 | failed worst 12075
+239 0123456,0124563,0125634,0126345,2103654,2104365,2105436,2106543 c=1010202 kids mean 211.5 worst 580 | loop mean 6690 worst 18550 | root h 9.331 | failed worst 12072
+1071 0123456,0361452,1064352,1420356,3024156,3460152,4163052,4321056 c=2101200 kids mean 210.2 worst 604 | loop mean 6658 worst 18553 | root h 9.331 | failed worst 12072
+239 0123456,0124563,0125634,0126345,2103654,2104365,2105436,2106543 c=2000202 kids mean 253.8 worst 601 | loop mean 8093 worst 19200 | root h 8.921 | failed worst 11806
+936 0123456,0253146,0413526,0543216,6143250,6213540,6453120,6523410 c=2000001 kids mean 253.5 worst 582 | loop mean 8079 worst 19216 | root h 8.921 | failed worst 11804
+234 0123456,0124563,0125634,0126345,0213456,0214563,0215634,0216345 c=0020202 kids mean 282.7 worst 640 | loop mean 8949 worst 19939 | root h 8.886 | failed worst 15556
+321 0123456,0126453,0253146,0256143,0413526,0416523,0543216,0546213 c=1000002 kids mean 276.3 worst 666 | loop mean 8757 worst 20061 | root h 8.854 | failed worst 16095
+321 0123456,0126453,0253146,0256143,0413526,0416523,0543216,0546213 c=0000000 kids mean 278.9 worst 684 | loop mean 8837 worst 20995 | root h 8.886 | failed worst 15361
+1071 0123456,0361452,1064352,1420356,3024156,3460152,4163052,4321056 c=1000101 kids mean 255.4 worst 684 | loop mean 8143 worst 21129 | root h 8.921 | failed worst 11799
+1071 0123456,0361452,1064352,1420356,3024156,3460152,4163052,4321056 c=0202002 kids mean 258.4 worst 686 | loop mean 8214 worst 21145 | root h 8.917 | failed worst 13243
+936 0123456,0253146,0413526,0543216,6143250,6213540,6453120,6523410 c=1000002 kids mean 257.7 worst 690 | loop mean 8196 worst 21662 | root h 8.917 | failed worst 13239
+640 0123456,0153426,1420356,1450326,3024156,3054126,4321056,4351026 c=2101200 kids mean 277.0 worst 675 | loop mean 8783 worst 22022 | root h 8.854 | failed worst 16086
+116235 tables, 399 of them under 450 children a state
+
+$ ./r11-keys one 936 0000000     (the new key with other orders of views, faces and tests; best five by worst loop cost)
+lead 2 tie 1 faces 012 swap 0: rc 1 kids mean 211.9 worst 580 | loop mean 6712 worst 17898 | failed worst 11937 | first 2543 next 402 catch 918 test 1205 node 1590
+lead 3 tie 1 faces 012 swap 0: rc 1 kids mean 211.9 worst 580 | loop mean 6712 worst 17898 | failed worst 11937 | first 2543 next 402 catch 918 test 1205 node 1590
+lead 0 tie 1 faces 210 swap 0: rc 1 kids mean 211.3 worst 598 | loop mean 6685 worst 18038 | failed worst 12075 | first 2536 next 401 catch 916 test 1191 node 1586
+lead 0 tie 0 faces 012 swap 0: rc 1 kids mean 212.5 worst 601 | loop mean 6726 worst 18093 | failed worst 12075 | first 2550 next 403 catch 921 test 1202 node 1595
+lead 0 tie 1 faces 012 swap 0: rc 1 kids mean 212.8 worst 601 | loop mean 6733 worst 18093 | failed worst 12075 | first 2553 next 404 catch 922 test 1201 node 1598
+two views pin the solved state: views 0+1 1, 1+2 1, 2+0 1
+key distances: 0:1 1:6 2:32 3:187 4:1045 5:5284 6:24518 7:96241 8:229261 9:101758 10:936 11:1
+
+$ ./r11-keys one 1267 0000000    (the r11 key, as built)
+lead 0 tie 1 faces 012 swap 0: rc 1 kids mean 314.6 worst 714 | loop mean 9943 worst 23433 | failed worst 14669 | first 3775 next 607 catch 1358 test 1756 node 2380
+two views pin the solved state: views 0+1 1, 1+2 1, 2+0 1
+key distances: 0:1 1:7 2:38 3:215 4:1197 5:6336 6:29886 7:114434 8:233880 9:72967 10:309

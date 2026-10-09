@@ -370,6 +370,66 @@ subtree in the iteration before (34,592: at the root 99.2% of the largest
 subtrees are a first move of a solution, but they are also the dearest to
 search).
 
+## Round 2: where the instructions of r11 go, and which key
+
+* `experiments/r11-nodes.c`, output `experiments/r11-nodes.txt`: the model
+  of the loop at r11, by block of code, by iteration and by depth. Measured
+  minus model is 2,723 to 3,652 for all 2,644 states. A state has 314.6
+  children and 56.8 nodes on average, 31.6 instructions a child in the
+  loop; 78.2 of the children are in the last iteration (bound 11). Of the
+  2,644 states, 192 start at bound 10, 2,192 at bound 9 and 260 at bound 8.
+  With the exact distances of `solver.c` it also shows what the last
+  iteration costs: 1,144 states have 9 neighbours at distance 10, 1,008
+  have 8, 432 have 7 and 60 have 4 to 6; in 143 states the first move that
+  is searched at bound 11 leads to another distance-11 state. Worst state
+  `21354672313211`: root distances 8, 8, 8; bounds 8 to 10 take 3,050
+  instructions, bound 11 takes 20,383, of which 18,884 under the four first
+  moves R, R2, R', B, which all lead to distance-11 states. If the last
+  iteration descended only into children that are one move closer, the worst
+  state would take 19,442 and the mean would be 11,811: the rest is the
+  iterations that fail (465 children at bound 10 for a state with root
+  distances 9, 8, 8).
+* `experiments/r11-keys.c`, output `experiments/r11-keys.txt`: every key
+  that fits the table. A key that commutes with the moves is a left coset
+  of a subgroup, and at 2 bits a key the subgroup has order 8. All 1,575
+  subgroups of order 8 of S7, each with the twists measured in every frame
+  (116,235 tables), were built and searched over the 2,644 states with the
+  loop of r11. The r11 key is one of them (subgroup 1267: loop mean 9,943,
+  worst 23,433, as measured). The best is subgroup 936 with the twists as
+  stored: loop mean 6,733, worst 18,093, 212.8 children a state. The same
+  key seen along the other two axes follows (18,550 and 18,553), then
+  another family at 19,200. The 8 relabellings of subgroup 936 are the
+  turns of D, R2 B2 R2 and three more at 4 moves from solved
+  (`experiments/r11-ideas.txt`), so the distance of a key is at most 4
+  below the distance of each of its states; the r11 key has four
+  relabellings at 5 moves. 15 subgroups are refused: their three views do
+  not pin the solved state.
+* `experiments/r11-ideas.c`, output `experiments/r11-ideas.txt`: policies
+  for the last iteration and smaller ideas, as the worst and the mean of
+  (measured - loop of r11 + loop of the variant):
+
+  | Variant | Worst | Mean |
+  | :--- | ---: | ---: |
+  | r11 | 26,567 | 13,156 |
+  | oracle: the first move is one that is a move closer | 22,492 | 12,802 |
+  | oracle: the first move with the cheapest search | 19,259 | 11,835 |
+  | first moves by least sum of their key distances | 29,456 | 13,543 |
+  | first moves by most children in the iteration before | 29,454 | 13,493 |
+  | one turn of each face first | 27,802 | 13,309 |
+  | half turns first | 25,161 | 13,386 |
+  | a budget of 5 pops a first move, then no budget | 24,208 | 13,161 |
+  | the same with 4, 8, 16 pops | 25,935, 26,222, 30,309 | |
+  | bounds 10 and 11 in one pass (branch and bound) | 25,687 | 13,068 |
+
+  A half turn leads from a distance-11 state to another one in 381 to 390
+  states, a quarter turn in 143 to 176. On the walk home the order quarter,
+  back, half tries 3.36 keys a step against 3.43 as built. Of the 107 pops
+  of the worst state, 28 follow a third turn (15.1 of 43.8 on average).
+* A host interpreter of RV32I (not kept as a file; the linked image as in
+  `reference_ripes_cli`: `riscv64-elf-ld --no-relax -Ttext=0
+  -Tdata=0x10000000`) gives the Ripes count of all 2,644 states of r11
+  exactly, in 0.13 s. It was used to try changes before a Ripes sweep.
+
 ## Smaller experiments
 
 * `experiments/heuristics.c`, output `experiments/heuristics.txt`: IDA*

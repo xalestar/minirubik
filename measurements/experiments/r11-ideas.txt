@@ -1,0 +1,82 @@
+normal order (model of the loop as built)                        worst  26567 (21354672313211) mean  13156
+natural order, composed from parts                               worst  26567 (21354672313211) mean  13156
+oracle at the root: first child at distance 10                   worst  22492 (14625731322233) mean  12802
+oracle at the root: cheapest child that finds                    worst  19259 (14735621333222) mean  11835
+all nine by least sum of key distances (+350)                    worst  29456 (47653213232111) mean  13543
+all nine by largest sum (+350)                                   worst  30065 (32156741112323) mean  13550
+all nine by least max, then least sum (+350)                     worst  29456 (47653213232111) mean  13524
+all nine by least first view, then sum (+350)                    worst  29456 (47653213232111) mean  13630
+all nine by least min, then sum (+350)                           worst  29456 (47653213232111) mean  13583
+first by least sum, then the natural order again (+350)          worst  36743 (63142573112123) mean  13528
+least-sum child is at distance 10 in 2515 of 2644 states
+sum of key distances of the 9 children: sum: at distance 10 / at distance 11
+  20: 96 / 0
+  21: 168 / 0
+  22: 720 / 0
+  23: 2328 / 168
+  24: 4800 / 84
+  25: 6240 / 1236
+  26: 5304 / 288
+  27: 1860 / 312
+  28: 144 / 0
+  29: 24 / 24
+one turn of each face first: R B D, R2 B2 D2, R' B' D' (+150)    worst  27802 (36415272123212) mean  13309
+half turns first: R2 B2 D2, R B D, R' B' D' (+150)               worst  25161 (14735621223332) mean  13386
+faces D B R at the root only (+20)                               worst  31305 (41263751312222) mean  13329
+back turns first at the root: R' R2 R ... (+20)                  worst  26697 (21354672313211) mean  13205
+first moves that lead to a distance-11 state, by place in the order R R2 R' B B2 B' D D2 D': 143 381 152 161 381 152 176 390 176
+all nine by most children in the iteration before (+400)         worst  29454 (52341671111111) mean  13493
+all nine by fewest children in the iteration before (+400)       worst  26967 (21354672313211) mean  13868
+all nine by most nodes in the iteration before (+400)            worst  29454 (52341671111111) mean  13493
+all nine by deepest node in the iteration before (+400)          worst  26967 (21354672313211) mean  13571
+all nine by deepest, then fewest children (+400)                 worst  26967 (21354672313211) mean  13576
+all nine by deepest, then most children (+400)                   worst  26967 (21354672313211) mean  13427
+child with most children / deepest node / most nodes before is at distance 10 in 2624 / 2606 / 2624 of 2644
+deepest node under a root child in the iteration before: depth: at distance 10 / 11
+  0: 624 / 120
+  1: 4812 / 1200
+  2: 9336 / 600
+  3: 4512 / 192
+  4: 936 / 0
+  5: 216 / 0
+  7: 696 / 0
+  8: 552 / 0
+budget 2 pops a first move, then no budget (+2 a pop)            worst  30738 (35714623111322) mean  13322
+budget 2 pops, then only the first moves that were cut           worst  30738 (35714623111322) mean  13322
+budget 3 pops a first move, then no budget (+2 a pop)            worst  32017 (35714623111322) mean  13289
+budget 3 pops, then only the first moves that were cut           worst  32017 (35714623111322) mean  13289
+budget 4 pops a first move, then no budget (+2 a pop)            worst  25935 (14735621333222) mean  13178
+budget 4 pops, then only the first moves that were cut           worst  25935 (14735621333222) mean  13178
+budget 5 pops a first move, then no budget (+2 a pop)            worst  24208 (26714532121133) mean  13161
+budget 5 pops, then only the first moves that were cut           worst  24208 (26714532121133) mean  13161
+budget 6 pops a first move, then no budget (+2 a pop)            worst  24373 (71643523331213) mean  13098
+budget 6 pops, then only the first moves that were cut           worst  24373 (71643523331213) mean  13098
+budget 8 pops a first move, then no budget (+2 a pop)            worst  26222 (14735621223332) mean  13111
+budget 8 pops, then only the first moves that were cut           worst  26222 (14735621223332) mean  13111
+budget 10 pops a first move, then no budget (+2 a pop)           worst  25531 (31765242322121) mean  13128
+budget 10 pops, then only the first moves that were cut          worst  25531 (31765242322121) mean  13128
+budget 12 pops a first move, then no budget (+2 a pop)           worst  26358 (31765242322121) mean  13117
+budget 12 pops, then only the first moves that were cut          worst  26358 (31765242322121) mean  13117
+budget 16 pops a first move, then no budget (+2 a pop)           worst  30309 (57321641311112) mean  13179
+budget 16 pops, then only the first moves that were cut          worst  30309 (57321641311112) mean  13179
+budget 20 pops a first move, then no budget (+2 a pop)           worst  25962 (21354761112233) mean  13186
+budget 20 pops, then only the first moves that were cut          worst  25962 (21354761112233) mean  13186
+budget 28 pops a first move, then no budget (+2 a pop)           worst  25115 (21354761112233) mean  13208
+budget 28 pops, then only the first moves that were cut          worst  25115 (21354761112233) mean  13208
+budgets 2, 5 pops in turn, then no budget                        worst  28592 (43751623123313) mean  13351
+budgets 3, 6 pops in turn, then no budget                        worst  26886 (35714623111322) mean  13297
+budgets 4, 8 pops in turn, then no budget                        worst  25935 (14735621333222) mean  13181
+budgets 5, 10 pops in turn, then no budget                       worst  24208 (26714532121133) mean  13161
+budgets 6, 12 pops in turn, then no budget                       worst  24373 (71643523331213) mean  13098
+budgets 8, 16 pops in turn, then no budget                       worst  26222 (14735621223332) mean  13111
+budgets 10, 20 pops in turn, then no budget                      worst  25531 (31765242322121) mean  13128
+budgets 12, 28 pops in turn, then no budget                      worst  26358 (31765242322121) mean  13117
+new key, distance of each element of the subgroup: 0123456:0 0253146:1 0413526:1 0543216:1 6143250:4 6213540:4 6453120:4 6523410:3
+r11 key, distance of each element of the subgroup: 0123456:0 0543216:1 1023465:5 1643205:5 5043261:5 5623401:5 6143250:4 6523410:3
+R2 B2 R2 = 6523410 twists 0000000
+walk home, quarter, half, back (as built): 3.43 keys tried a step
+walk home, half first: 3.53 keys tried a step
+walk home, quarter, back, half: 3.36 keys tried a step
+walk home, all half turns, then quarters: 3.62 keys tried a step
+as built: worst 26567 mean 13156; bounds 10 and 11 in one pass (branch and bound, +60 at the first answer): worst 25687 mean 13068
+pops per state 43.8, after a third turn 15.1; worst state: 107 pops, 28 after a third turn
