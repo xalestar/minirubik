@@ -74,8 +74,9 @@ to solved and has the expected length 11.
 | `sweep-r10.txt` | `b8612ad` r10: one block per face in the walk home | 13,169 | 26,580 | `21354672313211` |
 | `sweep-r11.txt` | r11: shorter set-up around solve | 13,156 | 26,567 | `21354672313211` |
 | `sweep-r12.txt` | r12: the key whose relabellings are at most 4 moves from solved | 9,957 | 21,265 | `42651372213311` |
+| `sweep-r13.txt` | r13: the 2-bit value read from a word, shifted by the orientation offset itself | 9,530 | 20,273 | `42651372213311` |
 
-All seventeen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All eighteen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -126,6 +127,7 @@ comparable; `sweep-v3.txt` is sorted.
 | r11 | 11,715 | 2,760 | 128,172 + 480 |
 | gcc -O2, r12 C | 15,422 | 3,040 | |
 | r12 | 5,396 | 2,740 | 128,180 + 480 |
+| r13 (gcc as at r12: the C did not change) | 5,209 | 2,704 | 129,660 + 480 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -384,6 +386,7 @@ kept.
 | :--- | :--- | :--- | ---: | ---: | :--- | ---: | :--- |
 | `sweep-r11.txt` | (r11) | | 13,156 | 26,567 | `21354672313211` | 2,760 | |
 | `sweep-r12.txt` | r12 (N1): the block code keeps where cubie 3 sits, where the pair {0, 6} sits, and the ring of cubies 1, 2, 5, 4 up to a turn of D, its mirror image counting as the same when 0 and 6 are swapped. The table has the same size; its largest distance is 11 (one key). `parse` no longer computes the parity of the permutation, which the old key used | `r11-keys.c`: loop worst 18,093 and mean 6,733 against 23,433 and 9,943, so about 21,300 and 9,950 | 9,957 | 21,265 | `42651372213311` | 2,740 | yes |
+| `sweep-r13.txt` | r13 (N2): an orientation rank o is kept as the offset 128 * (o / 16) + 2 * (o % 16). Shifted right by 5 it is the byte offset of the word of the row that holds the value; a shift by the offset itself uses its low 5 bits, the position in the word. `orient_turn` is laid out for these offsets (a block of 128 bytes for 16 ranks, 32 of them unused): 5,856 bytes instead of 4,376. The rows of the table are the same bytes | 1 instruction less for each lookup: 601 first tests, about 350 rotated tests and 90 keys on the walks home for the worst state; 12 more in `coords` | 9,530 | 20,273 | `42651372213311` | 2,704 | yes |
 
 At r12 `make gates` counts 213 children a state (r11: 315), 40 nodes
 (57) and 90 keys tried on the walks home (85); H3 over all states takes
@@ -392,6 +395,20 @@ At r12 `make gates` counts 213 children a state (r11: 315), 40 nodes
 assembly, `42651372213311`, the gcc build retires 74,872 instructions
 against 21,265. The three test cases together take 8,825 instructions on
 `RV32_ISS`, 11,554 cycles on `RV32_5S` and 11,455 on `RV32_6S_DUAL`.
+
+At r13 the static data is 130,140 bytes for the CLI build and 130,406 for
+the GUI build. `gen` checks the word accessor against the unpacked table
+at all 459,270 indices, next to the byte accessor of the C build (H4). The
+three test cases take 8,605 instructions on `RV32_ISS`, 11,590 cycles on
+`RV32_5S` and 11,511 on `RV32_6S_DUAL`: 220 fewer instructions than r12,
+36 more cycles on `RV32_5S`, where the shift now waits for the load of the
+word.
+
+From r13 on, every one of the 3,674,160 states was also run through
+`rubik-cli.s` on the host interpreter, with its exact distance as the
+expected length of the test case: all exit with code 0. The worst state
+overall is a distance-11 state (r13: 20,273; the worst at distance 10 is
+16,297, at distance 9 12,435).
 
 The host programs of round 2 (`r11-nodes.c`, `r11-keys.c`, `r11-ideas.c`)
 read the `ida.c` and `tables.h` of r11 (`d1b8fed`); `r11-keys.c` needs only

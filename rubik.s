@@ -3,15 +3,18 @@
 #
 # Same algorithm as ida.c. A view of the state is two coordinates (gen.c):
 # its block code, held as the address of that code's row in `pattern`, and
-# 2 * its orientation rank. A row starts with the addresses of the rows the
-# code turns into, so a quarter turn is one load for the block code and one
-# add and one load for the orientation. The search carries three views, the
+# its orientation rank o, held as the offset 128 * (o / 16) + 2 * (o % 16).
+# A row starts with the addresses of the rows the code turns into, so a
+# quarter turn is one load for the block code and one add and one load for
+# the orientation. The search carries three views, the
 # state and its two rotations about the fixed corner; the rotated views turn
 # the rotated face. The three turns of a face are chained, each child from
 # the previous one, in registers.
 #
 # After its three addresses a row holds the distance modulo 3 of each
-# orientation, 2 bits each. No distance is rebuilt: per view the node keeps
+# orientation, 2 bits each, 16 to a word. The offset shifted right by 5 is
+# the byte offset of the word, and a shift by the offset itself, which uses
+# its low 5 bits, brings the value down. No distance is rebuilt: per view the node keeps
 # the address of a 4-byte row of next_state, which stands for (slack,
 # distance mod 3) with slack = moves left - distance. Adding the child's
 # 2-bit value and loading gives the child's row, or -1 if its slack would be
@@ -23,7 +26,7 @@
 # The two builds differ only in the code between .if RENDER and .endif.
 
 .equ RENDER, 0
-.equ ORIENT_FACE, 1458          # bytes per face in orient_turn, 2 * 729
+.equ ORIENT_FACE, 32            # from one face to the next in orient_turn
 .equ FRAME, 32                  # bytes per slot in frames
 
 .data
@@ -52,7 +55,7 @@ pair_base:   .byte 0, 5, 9, 12, 14, 0, 0, 0
 # there. The first holds the three views of the state as given (bytes
 # 0..17); slot 0 holds them with the farthest view first.
 #   0 4 8     the pattern row of this node in each view (words)
-#  12 14 16   2 * its orientation rank in each view
+#  12 14 16   its orientation offset in each view
 #  18 turns left on the face of the child being searched (3..1)
 #  19 that face (0 R, 1 B, 2 D); 3 in the slot in front: no parent face
 #  20 24 28   the next_state row of this node in each view (words)
@@ -187,7 +190,7 @@ parse_done:
     jalr zero, ra, 0
 
 # coords: a0 = a valid state string -> a2 = the pattern row of its block
-# code, a3 = 2 * its orientation rank. The block code is
+# code, a3 = its orientation offset. The block code is
 # (15 * home + pair) * 6 + ring (gen.c).
 coords:
     li   a3, 0
@@ -202,7 +205,11 @@ coords_twist:
     bltu t0, t5, coords_twist
     li   t1, 17836              # the digits count from '1': 49 * 364
     sub  a3, a3, t1
-    slli a3, a3, 1
+    andi t1, a3, 15             # the offset: 128 * (o / 16) + 2 * (o % 16)
+    srli a3, a3, 4
+    slli a3, a3, 7
+    slli t1, t1, 1
+    or   a3, a3, t1
     li   t2, 0                  # positions so far that do not hold cubie 3
     li   a7, 0                  # the ring places so far, 2 bits each
     la   t6, kind_of
@@ -270,7 +277,7 @@ coords_ranked:
     add  a2, a2, t0
     jalr zero, ra, 0
 
-# root_dist: a2 = pattern row, a5 = 2 * orientation rank -> a0 = the distance
+# root_dist: a2 = pattern row, a5 = orientation offset -> a0 = the distance
 # of that key, a1 = the distance modulo 3. Walks home: a neighbour one closer
 # is one whose value is one less modulo 3, and it is never on the face of
 # the step before. One block per face, as in the search. Needs s5 s6 s7 =
@@ -278,11 +285,10 @@ coords_ranked:
 root_dist:
     li   a0, 0
     li   a4, -1                 # the face of the step before
-    srli t0, a5, 3
+    srli t0, a5, 5
     add  t0, t0, a2
-    lbu  t0, 12(t0)
-    andi t1, a5, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a5             # by the low 5 bits
     andi a1, t0, 3
     mv   t5, a1
 root_step:
@@ -301,11 +307,10 @@ root_turn_R:
     lw   a3, 0(a3)
     add  t0, s5, a6
     lhu  a6, 0(t0)
-    srli t0, a6, 3
+    srli t0, a6, 5
     add  t0, t0, a3
-    lbu  t0, 12(t0)
-    andi t1, a6, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
     andi t0, t0, 3
     beq  t0, t5, root_closer_R
     addi t4, t4, -1
@@ -319,11 +324,10 @@ root_turn_B:
     lw   a3, 4(a3)
     add  t0, s6, a6
     lhu  a6, 0(t0)
-    srli t0, a6, 3
+    srli t0, a6, 5
     add  t0, t0, a3
-    lbu  t0, 12(t0)
-    andi t1, a6, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
     andi t0, t0, 3
     beq  t0, t5, root_closer_B
     addi t4, t4, -1
@@ -335,11 +339,10 @@ root_turn_D:
     lw   a3, 8(a3)
     add  t0, s7, a6
     lhu  a6, 0(t0)
-    srli t0, a6, 3
+    srli t0, a6, 5
     add  t0, t0, a3
-    lbu  t0, 12(t0)
-    andi t1, a6, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
     andi t0, t0, 3
     beq  t0, t5, root_closer_D
     j    root_turn_D
@@ -370,7 +373,7 @@ root_done:
 # and the solved row to 20(sp).
 # Registers while searching:
 #   a2 a3 a4  the child's pattern row in each view
-#   a5 a6 a7  2 * its orientation rank in each view
+#   a5 a6 a7  its orientation offset in each view
 #   s0 s1 s2  the node's next_state row in each view
 #   s3 s10 s11  the child's offset into next_state in each view
 #   s5 s6 s7  orient_turn of R, B, D        t2 next_state
@@ -509,11 +512,10 @@ turn_R:
     lw   a2, 0(a2)
     add  t0, s5, a5
     lhu  a5, 0(t0)
-    srli t0, a5, 3
+    srli t0, a5, 5
     add  t0, t0, a2
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a5, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s0
     lb   s3, 0(t0)
@@ -527,20 +529,18 @@ catch_R:
     lhu  a7, 0(t0)
     addi a0, a0, -1
     bne  a0, t4, catch_R
-    srli t0, a6, 3
+    srli t0, a6, 5
     add  t0, t0, a3
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a6, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s1
     lb   s10, 0(t0)
     bltz s10, next_R
-    srli t0, a7, 3
+    srli t0, a7, 5
     add  t0, t0, a4
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a7, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a7             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s2
     lb   s11, 0(t0)
@@ -565,11 +565,10 @@ turn_B:
     lw   a2, 4(a2)
     add  t0, s6, a5
     lhu  a5, 0(t0)
-    srli t0, a5, 3
+    srli t0, a5, 5
     add  t0, t0, a2
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a5, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s0
     lb   s3, 0(t0)
@@ -583,20 +582,18 @@ catch_B:
     lhu  a7, 0(t0)
     addi a0, a0, -1
     bne  a0, t4, catch_B
-    srli t0, a6, 3
+    srli t0, a6, 5
     add  t0, t0, a3
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a6, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s1
     lb   s10, 0(t0)
     bltz s10, next_B
-    srli t0, a7, 3
+    srli t0, a7, 5
     add  t0, t0, a4
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a7, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a7             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s2
     lb   s11, 0(t0)
@@ -620,11 +617,10 @@ turn_D:
     lw   a2, 8(a2)
     add  t0, s7, a5
     lhu  a5, 0(t0)
-    srli t0, a5, 3
+    srli t0, a5, 5
     add  t0, t0, a2
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a5, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s0
     lb   s3, 0(t0)
@@ -638,20 +634,18 @@ catch_D:
     lhu  a7, 0(t0)
     addi a0, a0, -1
     bne  a0, t4, catch_D
-    srli t0, a6, 3
+    srli t0, a6, 5
     add  t0, t0, a3
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a6, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a6             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s1
     lb   s10, 0(t0)
     bltz s10, next_D
-    srli t0, a7, 3
+    srli t0, a7, 5
     add  t0, t0, a4
-    lbu  t0, 12(t0)             # the byte of 4 values
-    andi t1, a7, 6
-    srl  t0, t0, t1
+    lw   t0, 12(t0)             # the word of 16 values
+    srl  t0, t0, a7             # by the low 5 bits
     andi t0, t0, 3              # the child's distance modulo 3
     add  t0, t0, s2
     lb   s11, 0(t0)
