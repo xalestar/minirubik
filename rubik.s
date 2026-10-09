@@ -47,9 +47,10 @@ msg_invalid: .string " -> invalid\n"
 pair_base:   .byte 0, 5, 9, 12, 14, 0, 0, 0
 
 .bss
-# One 32-byte slot per depth, 0..11, and two in front of the root's: the
-# pop of the root reads the first of them as its parent and finds face 3
-# there; the second is what that pop reads in front of it.
+# One 32-byte slot per depth, 0..11, and two in front of the root's. The
+# pop of the root reads the second of them as its parent and finds face 3
+# there. The first holds the three views of the state as given (bytes
+# 0..17); slot 0 holds them with the farthest view first.
 #   0 4 8     the pattern row of this node in each view (words)
 #  12 14 16   2 * its orientation rank in each view
 #  18 turns left on the face of the child being searched (3..1)
@@ -63,7 +64,7 @@ rotated: .zero 32               # the state string rotated once, and twice
 .text
 # Status bits for the exit code: 1 = a result failed validation, 2 = invalid.
 main:
-    addi sp, sp, -16
+    addi sp, sp, -32
     la   t0, cases
     sw   t0, 0(sp)              # next case
     sw   zero, 4(sp)            # status
@@ -82,8 +83,8 @@ case_loop:
     lw   t0, 0(sp)
     lw   a0, 0(t0)
     jal  ra, coords
-    sw   a2, 0(s9)
-    sh   a3, 12(s9)
+    sw   a2, -64(s9)            # the root's views, in the first slot in front
+    sh   a3, -52(s9)
     lw   t0, 0(sp)              # the same state rotated once, then twice
     lw   a0, 0(t0)
     la   a1, rotated
@@ -91,8 +92,8 @@ case_loop:
     la   a0, rotated
     mv   a1, s11
     jal  ra, coords
-    sw   a2, 4(s9)
-    sh   a3, 14(s9)
+    sw   a2, -60(s9)
+    sh   a3, -50(s9)
     la   a0, rotated
     addi a1, a0, 16
     jal  ra, rotate
@@ -100,8 +101,8 @@ case_loop:
     addi a0, a0, 16
     mv   a1, s11
     jal  ra, coords
-    sw   a2, 8(s9)
-    sh   a3, 16(s9)
+    sw   a2, -56(s9)
+    sh   a3, -48(s9)
 .if RENDER
     lw   t0, 0(sp)
     lw   a0, 0(t0)
@@ -146,7 +147,7 @@ case_next:
     j    case_loop
 finish:
     lw   a0, 4(sp)
-    addi sp, sp, 16
+    addi sp, sp, 32
     li   a7, 93
     ecall
 
@@ -337,9 +338,14 @@ root_closer:
 root_done:
     jalr zero, ra, 0
 
-# solve: slot 0 of frames holds the three views of the root (bytes 0..17)
-# -> a0 = solution length. Move k of the solution is bytes 19 and 18 of slot
-# k: the face, and 4 minus the number of quarter turns.
+# solve: the first slot in front of frames holds the three views of the
+# root (bytes 0..17) -> a0 = solution length. Move k of the solution is bytes
+# 19 and 18 of slot k: the face, and 4 minus the number of quarter turns.
+# The view that is farthest from solved is searched as the state's own view:
+# its test prunes the most, and every child pays for it. The other two
+# follow in the same cyclic order, so of two views equally far the one whose
+# follower is farther goes first. This is the search of the cube rotated
+# that many times; found turns the faces back. Writes the count to 16(sp).
 # Registers while searching:
 #   a2 a3 a4  the child's pattern row in each view
 #   a5 a6 a7  2 * its orientation rank in each view
@@ -366,9 +372,12 @@ solve:
     mv   t6, s9
     addi s11, s9, 12
 solve_view:
-    lw   a2, 0(s4)
-    lhu  a5, 12(t6)
+    lw   a2, -64(s4)
+    lhu  a5, -52(t6)
+    sw   a2, 0(s4)
+    sh   a5, 12(t6)
     jal  ra, root_dist
+    sb   a0, -44(s4)            # kept in the slot in front, bytes 20 24 28
     bgeu s10, a0, solve_kept
     mv   s10, a0
 solve_kept:
@@ -384,6 +393,47 @@ solve_kept:
     mv   ra, s3
     mv   a0, s10
     beqz s10, solve_done        # already solved
+    lbu  t0, -44(s9)            # the first view: the farthest, and of two
+    lbu  t1, -40(s9)            # equally far the one whose follower is
+    lbu  t2, -36(s9)            # farther
+    slli a2, t0, 4
+    add  a2, a2, t1
+    slli a3, t1, 4
+    add  a3, a3, t2
+    slli a4, t2, 4
+    add  a4, a4, t0
+    li   s0, 0
+    bgeu a2, a3, solve_second
+    li   s0, 1
+    mv   a2, a3
+solve_second:
+    bgeu a2, a4, solve_lead
+    li   s0, 2
+solve_lead:
+    sw   s0, 16(sp)
+    beqz s0, solve_first
+solve_rotate:                   # every view moves up one place
+    lw   t0, 0(s9)
+    lw   t1, 4(s9)
+    lw   t2, 8(s9)
+    sw   t1, 0(s9)
+    sw   t2, 4(s9)
+    sw   t0, 8(s9)
+    lhu  t0, 12(s9)
+    lhu  t1, 14(s9)
+    lhu  t2, 16(s9)
+    sh   t1, 12(s9)
+    sh   t2, 14(s9)
+    sh   t0, 16(s9)
+    lw   t0, 20(s9)
+    lw   t1, 24(s9)
+    lw   t2, 28(s9)
+    sw   t1, 20(s9)
+    sw   t2, 24(s9)
+    sw   t0, 28(s9)
+    addi s0, s0, -1
+    bnez s0, solve_rotate
+solve_first:
     la   t2, next_state
     slli t0, s10, 3             # slack = bound - distance: add 12 * bound
     slli t1, s10, 2
@@ -629,6 +679,20 @@ passed:
     bnez t6, first_R            # the child's coordinates are in the registers:
     j    first_B                # its first face, R, or B after an R
 found:
+    lw   t1, 16(sp)             # the faces of the cube as given: a rotation
+    beqz t1, found_length       # takes a face to the one before it
+    mv   t0, s9
+    li   a2, 3
+found_face:
+    lbu  t2, 19(t0)
+    add  t2, t2, t1
+    bltu t2, a2, found_kept
+    addi t2, t2, -3
+found_kept:
+    sb   t2, 19(t0)
+    addi t0, t0, FRAME
+    bgeu s4, t0, found_face
+found_length:
     sub  a0, s4, s9
     srli a0, a0, 5              # FRAME = 32
     addi a0, a0, 1
@@ -703,17 +767,18 @@ print_move:
 print_done:
     jalr zero, ra, 0
 
-# replay: a0 = length -> a0 = 1 if applying the moves in frames to the three
-# views of the root reaches the solved key in all of them, else 0. This is
-# gate T5 on the target. Needs s5 s6 s7 s9 as solve left them.
+# replay: a0 = length -> a0 = 1 if applying the moves in frames, as they are
+# printed, to the three views of the state as given reaches the solved key in
+# all of them, else 0. This is gate T5 on the target. Needs s5 s6 s7 s9 as
+# solve left them.
 replay:
     sw   ra, 12(sp)
-    lw   s3, 0(s9)
-    lw   s4, 4(s9)
-    lw   s8, 8(s9)
-    lhu  s10, 12(s9)
-    lhu  s11, 14(s9)
-    lhu  s0, 16(s9)
+    lw   s3, -64(s9)            # the views as given, not as searched
+    lw   s4, -60(s9)
+    lw   s8, -56(s9)
+    lhu  s10, -52(s9)
+    lhu  s11, -50(s9)
+    lhu  s0, -48(s9)
     mv   s2, s9
     slli t0, a0, 5              # FRAME = 32
     add  s1, s9, t0

@@ -194,23 +194,42 @@ static uint8_t root_dist(uint16_t b, uint16_t o)
 static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
 {
     frame_t stack[MAX_DEPTH + 1];
-    uint8_t dist[VIEWS], bound = 0;
-    for (int k = 0; k < VIEWS; ++k) {
-        stack[0].b[k] = vb[k];
-        stack[0].o[k] = vo[k];
-        dist[k] = root_dist(vb[k], vo[k]);
-        if (dist[k] > bound)
-            bound = dist[k];
+    uint8_t far[VIEWS], dist[VIEWS], bound = 0, lead = 0, best = 0;
+    for (uint8_t k = 0; k < VIEWS; ++k) {
+        far[k] = root_dist(vb[k], vo[k]);
+        if (far[k] > bound)
+            bound = far[k];
     }
     if (!bound)
         return 0;
+    /* The view that is farthest from solved goes first: its test prunes the
+     * most, and it is the one every child pays for. The other two follow in
+     * the same cyclic order, so of two views equally far, the one whose
+     * follower is farther goes first. This is the search of the cube
+     * rotated `lead` times, where a face f is called sym_face[f], `lead`
+     * times over.
+     */
+    for (uint8_t k = 0; k < VIEWS; ++k) {
+        uint8_t key = (uint8_t) ((far[k] << 4) + far[k == 2 ? 0 : k + 1]);
+        if (key > best) {
+            best = key;
+            lead = k;
+        }
+    }
+    for (uint8_t j = 0, k = lead; j < VIEWS; ++j) {
+        stack[0].b[j] = vb[k];
+        stack[0].o[j] = vo[k];
+        dist[j] = far[k];
+        if (++k == VIEWS)
+            k = 0;
+    }
     for (;; ++bound) {
         int depth = 0;
         /* row 3 * slack + distance mod 3; the table has the latter */
         for (int k = 0; k < VIEWS; ++k) {
             uint8_t slack = (uint8_t) (bound - dist[k]);
-            stack[0].s[k] =
-                (int8_t) ((slack << 1) + slack + mod3(vb[k], vo[k]));
+            stack[0].s[k] = (int8_t) ((slack << 1) + slack +
+                                      mod3(stack[0].b[k], stack[0].o[k]));
         }
         stack[0].face = NO_FACE;
         COUNT(expanded);
@@ -268,8 +287,14 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
                 continue;
             }
             if (depth + 1 == bound) {
-                for (int i = 0; i <= depth; ++i)
-                    path[i] = (uint8_t) (stack[i].face * 3U + stack[i].turn);
+                /* back to the faces of the cube as given: sym_face takes a
+                 * face to the one before it, so add `lead` */
+                for (int i = 0; i <= depth; ++i) {
+                    uint8_t face = (uint8_t) (stack[i].face + lead);
+                    if (face >= 3)
+                        face -= 3;
+                    path[i] = (uint8_t) ((face << 1) + face + stack[i].turn);
+                }
                 return bound;
             }
             COUNT(expanded);
