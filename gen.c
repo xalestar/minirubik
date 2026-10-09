@@ -2,42 +2,52 @@
  *
  * It reuses quarter_turn, rank_state and unrank_state from solver.c (the
  * first two are covered by its Frama-C proof, unrank_state by its
- * --self-test) so every table comes from the same model the BFS solver uses, and it checks
- * gates H1 (admissibility) and H2 (population) before writing anything.
+ * --self-test) so every table comes from the same model the BFS solver uses,
+ * and it checks gates H1 (admissibility), H2 (population) and H4 (the packed
+ * table) before writing anything.
  * Output: tables.h for the C build, tables.s for the assembly build.
  *
- * Heuristic: h = max(pattern_dist, orient_dist), with pattern_dist looked
- * up for the state and for its two rotations about the fixed corner.
- *   orient_dist[o]          exact distance of the orientation alone (729)
- *   pattern_dist[p][oS]     exact distance of the abstraction that keeps the
- *                           whole permutation p and the twists of cubies 0
- *                           and 3, oS = 3 * twist0 + twist3 (5040 x 9)
+ * Heuristic: one pattern database, looked up for the state and for its two
+ * rotations about the fixed corner. Its key keeps
+ *   o   the whole orientation, the twists by position (729 values), and
+ *   b   a block code (630 values): where cubie 3 sits, where the pair of
+ *       cubies {2, 4} sits, how the other four positions split into the
+ *       pairs {0, 6} and {1, 5}, and the parity of the permutation.
+ * The two cubies of a pair are not told apart, and neither are the pairs
+ * {0, 6} and {1, 5}. Eight states share a key: 3,674,160 / 8 = 459,270.
+ * The key commutes with the moves (checked below), so its distance in the
+ * graph of keys never exceeds the distance of the state.
  * A rotation of the cube about the diagonal through the fixed corner maps
- * states to states at the same distance, so the pattern distance of the
- * rotated state is a lower bound too; it follows the twists of another two
- * cubies with the same table (sym_pi, sym_tau, sym_face below).
- * The search tracks oS through a small coordinate c of its own:
- *   c = oS * 64 + 7 * pos0 + pos3   (pos = where cubie 0 / 3 sits; 576 codes)
- * so oS = c >> 6 and the pattern index needs no multiply.
+ * states to states at the same distance, so the distance of the rotated key
+ * is a lower bound too; it measures the twists against another axis and
+ * groups other cubies (sym_pi, sym_tau, sym_face below).
+ *
+ * The table stores each distance modulo 3, in 2 bits. A move changes the
+ * distance of a key by at most 1, so the value of a child modulo 3 and the
+ * distance of its parent give the distance of the child. The search does not
+ * even rebuild the distance: next_state steps (slack, distance mod 3) of the
+ * parent to that of the child, where slack = moves left - distance, and a
+ * child whose slack would be negative is pruned.
  */
 #define main solver_main
 #include "solver.c"
 #undef main
 
 enum {
-    PAIR_CODES = 576,    /* c < 9 * 64 */
-    PAIR_STATES = 378,   /* 7 * 6 positions x 9 twists */
-    PATTERN_ROW = 16,    /* pattern_dist row: 9 used, padded to 16 */
-    PATTERNS = PERMUTATIONS * 9,
-    PAIR_SOLVED = 3      /* cubie 0 at 0, cubie 3 at 3, untwisted */
+    BLOCKS = 630,                   /* block codes: 7 * 15 * 3 * 2 */
+    PATTERNS = BLOCKS * ORIENTATIONS,
+    ROW_BYTES = 183,                /* 729 values of 2 bits; the last byte
+                                       holds one */
+    ROW_STRIDE = 196,               /* tables.s: 3 addresses, the row, 1 pad */
+    SLACKS = 12,                    /* slack 0..11 */
+    SEARCH_STATES = SLACKS * 3
 };
 
 static uint16_t perm_turn[3][PERMUTATIONS], orient_turn[3][ORIENTATIONS];
-static uint16_t pair_turn[3][PAIR_CODES];
-static uint8_t orient_dist[ORIENTATIONS];
-static uint8_t pattern_dist[PERMUTATIONS][PATTERN_ROW];
-/* lehmer_weight[i][k] = k * (6 - i)!, the factoradic digit weights */
-static uint16_t lehmer_weight[CUBIES][CUBIES];
+static uint16_t block_turn[3][BLOCKS], block_solved;
+static uint8_t pattern_dist[BLOCKS][ORIENTATIONS];
+static uint8_t pattern_mod3[BLOCKS][ROW_BYTES];
+static int8_t next_state[SEARCH_STATES][4];
 /* The 120-degree rotation about the diagonal through the fixed corner, as a
  * map on states: the cubie at position i goes to position sym_pi[i] and is
  * cubie sym_pi[cubie] there. Its twist changes by sym_tau[i] - sym_tau[cubie],
@@ -47,6 +57,10 @@ static uint16_t lehmer_weight[CUBIES][CUBIES];
 static const uint8_t sym_pi[CUBIES] = {2, 5, 6, 1, 4, 3, 0};
 static const uint8_t sym_tau[CUBIES] = {0, 1, 0, 1, 0, 1, 0};
 static const uint8_t sym_face[3] = {2, 0, 1};
+/* The block of each cubie: 0 = {0, 6}, 1 = {1, 5}, 2 = {2, 4}, 3 = {3}. */
+static const uint8_t block_of[CUBIES] = {0, 1, 2, 3, 2, 1, 0};
+/* pair_base[i] + j - i - 1 numbers the pairs i < j of 6 things, 0..14. */
+static const uint8_t pair_base[5] = {0, 5, 9, 12, 14};
 
 static void rotate_state(const state_t *state, state_t *rotated)
 {
@@ -58,28 +72,51 @@ static void rotate_state(const state_t *state, state_t *rotated)
     }
 }
 
-static int pair_valid(uint16_t c)
+/* The block code of a state, read off its permutation in one pass:
+ *   home    the position of cubie 3,                              7 choices
+ *   c1, c2  the positions of cubies 2 and 4 among the other six,  15
+ *   mate    which of the last three of the remaining four
+ *           positions holds the same pair as the first,           3
+ *   parity  of the permutation,                                   2
+ */
+static uint16_t block_code(const state_t *state)
 {
-    uint8_t pos0 = (uint8_t) (c % 64 / 7), pos3 = (uint8_t) (c % 64 % 7);
-    return c < PAIR_CODES && c % 64 < 49 && pos0 != pos3;
-}
-
-/* The pair code of a full state: where cubies 0 and 3 are, and their twists. */
-static uint16_t pair_of(const state_t *state)
-{
-    uint8_t pos0 = 0, pos3 = 0;
+    uint8_t home = 0, c1 = 0, c2 = 0, mate = 0, first = 0, parity = 0;
+    uint8_t six = 0, four = 0, twos = 0;
     for (uint8_t i = 0; i < CUBIES; ++i) {
-        if (state->p[i] == 0)
-            pos0 = i;
-        if (state->p[i] == 3)
-            pos3 = i;
+        uint8_t block = block_of[state->p[i]];
+        for (uint8_t j = (uint8_t) (i + 1U); j < CUBIES; ++j)
+            parity ^= state->p[j] < state->p[i];
+        if (block == 3) {
+            home = i;
+            continue;
+        }
+        if (block == 2) {
+            if (twos++)
+                c2 = six;
+            else
+                c1 = six;
+        } else {
+            if (!four)
+                first = block;
+            else if (block == first)
+                mate = (uint8_t) (four - 1U);
+            ++four;
+        }
+        ++six;
     }
-    return (uint16_t) ((3 * state->o[pos0] + state->o[pos3]) * 64 + 7 * pos0 +
-                       pos3);
+    return (uint16_t) (((home * 15U + pair_base[c1] + c2 - c1 - 1U) * 3U +
+                        mate) * 2U + parity);
 }
 
-static void build_transitions(void)
+/* Returns 0 unless the block code commutes with the quarter turns: every
+ * permutation with the same code must turn into the same code.
+ */
+static int build_transitions(void)
 {
+    static uint16_t sample[BLOCKS];
+    static uint8_t known[BLOCKS];
+    uint32_t codes = 0;
     state_t state;
     for (uint32_t rank = 0; rank < PERMUTATIONS; ++rank) {
         unrank_state(rank * ORIENTATIONS, &state);
@@ -88,7 +125,17 @@ static void build_transitions(void)
             perm_turn[face][rank] =
                 (uint16_t) (rank_state(&next) / ORIENTATIONS);
         }
+        uint16_t code = block_code(&state);
+        if (code >= BLOCKS)
+            return 0;
+        if (!known[code]) {
+            known[code] = 1;
+            sample[code] = (uint16_t) rank;
+            ++codes;
+        }
     }
+    if (codes != BLOCKS)
+        return 0;
     for (uint32_t rank = 0; rank < ORIENTATIONS; ++rank) {
         unrank_state(rank, &state);
         for (uint8_t face = 0; face < 3; ++face) {
@@ -97,117 +144,61 @@ static void build_transitions(void)
                 (uint16_t) (rank_state(&next) % ORIENTATIONS);
         }
     }
-    /* Pair codes move like the cubies they describe: build a state with
-     * cubies 0 and 3 in place, turn it, and read them back. The other
-     * cubies and twists are arbitrary and do not affect the result.
-     */
-    for (uint16_t c = 0; c < PAIR_CODES; ++c) {
-        if (!pair_valid(c))
-            continue;
-        uint8_t pos0 = (uint8_t) (c % 64 / 7), pos3 = (uint8_t) (c % 64 % 7);
-        uint8_t others[] = {1, 2, 4, 5, 6}, k = 0;
-        for (uint8_t i = 0; i < CUBIES; ++i) {
-            state.p[i] = i == pos0 ? 0 : i == pos3 ? 3 : others[k++];
-            state.o[i] = 0;
-        }
-        state.o[pos0] = (uint8_t) (c / 64 / 3);
-        state.o[pos3] = (uint8_t) (c / 64 % 3);
+    for (uint16_t code = 0; code < BLOCKS; ++code) {
+        unrank_state((uint32_t) sample[code] * ORIENTATIONS, &state);
         for (uint8_t face = 0; face < 3; ++face) {
             state_t next = quarter_turn(state, face);
-            pair_turn[face][c] = pair_of(&next);
+            block_turn[face][code] = block_code(&next);
         }
     }
-    for (uint16_t i = 0, f = 720; i < CUBIES; f = i < 5 ? f / (6 - i) : 1, ++i)
-        for (uint16_t k = 0; k < CUBIES; ++k)
-            lehmer_weight[i][k] = (uint16_t) (k * f);
-}
-
-/* Exact distance in the orientation-only graph. The orientation evolves
- * independently of the permutation (report.md section 4), so its own
- * transition table is the projected move. Returns the entries reached.
- */
-static uint32_t orient_bfs(void)
-{
-    uint16_t queue[ORIENTATIONS];
-    uint32_t head = 0, tail = 1;
-    memset(orient_dist, UINT8_MAX, sizeof orient_dist);
-    orient_dist[0] = 0;
-    queue[0] = 0;
-    while (head < tail) {
-        uint16_t here = queue[head++];
+    for (uint32_t rank = 0; rank < PERMUTATIONS; ++rank) {
+        unrank_state(rank * ORIENTATIONS, &state);
+        uint16_t code = block_code(&state);
         for (uint8_t face = 0; face < 3; ++face) {
-            uint16_t there = here;
-            for (uint8_t t = 0; t < 3; ++t) {
-                there = orient_turn[face][there];
-                if (orient_dist[there] == UINT8_MAX) {
-                    orient_dist[there] = (uint8_t) (orient_dist[here] + 1U);
-                    queue[tail++] = there;
-                }
-            }
+            state_t next = quarter_turn(state, face);
+            if (block_code(&next) != block_turn[face][code])
+                return 0;
         }
     }
-    return tail;
+    unrank_state(0, &state);
+    block_solved = block_code(&state);
+    printf("H2 block code: %u codes over %u permutations, commutes with the "
+           "3 quarter turns\n",
+           codes, PERMUTATIONS);
+    return 1;
 }
 
-/* Exact distance in the pattern graph, by BFS over (p, c). Given p, the
- * positions inside c are determined, so (p, c) and (p, oS) name the same
- * abstract state; the first visit of either is its distance. Returns the
- * number of (p, oS) entries reached, or 0 if two visits disagree.
+/* Exact distance in the graph of keys (b, o), by BFS from the solved key.
+ * Returns the number of keys reached.
  */
 static uint32_t pattern_bfs(void)
 {
-    uint8_t *seen = calloc((size_t) PERMUTATIONS * PAIR_CODES, 1);
     uint32_t *queue = malloc(sizeof *queue * PATTERNS);
-    uint8_t *dist = malloc((size_t) PERMUTATIONS * PAIR_CODES);
-    uint32_t head = 0, tail = 1, filled = 0;
-    if (!seen || !queue || !dist) {
-        free(seen);
-        free(queue);
-        free(dist);
+    uint32_t head = 0, tail = 1;
+    if (!queue)
         return 0;
-    }
     memset(pattern_dist, UINT8_MAX, sizeof pattern_dist);
-    queue[0] = PAIR_SOLVED;
-    seen[PAIR_SOLVED] = 1;
-    dist[PAIR_SOLVED] = 0;
+    queue[0] = (uint32_t) block_solved * ORIENTATIONS;
+    pattern_dist[block_solved][0] = 0;
     while (head < tail) {
         uint32_t here = queue[head++];
-        uint16_t p = (uint16_t) (here / PAIR_CODES);
-        uint16_t c = (uint16_t) (here % PAIR_CODES);
-        uint8_t *slot = &pattern_dist[p][c / 64];
-        if (*slot == UINT8_MAX) {
-            *slot = dist[here];
-            ++filled;
-        } else if (*slot != dist[here]) {
-            fprintf(stderr, "pattern (%u, %u) reached at %u and %u\n", p,
-                    c / 64, *slot, dist[here]);
-            filled = 0;
-            break;
-        }
+        uint16_t b = (uint16_t) (here / ORIENTATIONS);
+        uint16_t o = (uint16_t) (here % ORIENTATIONS);
         for (uint8_t face = 0; face < 3; ++face) {
-            uint16_t np = p, nc = c;
+            uint16_t nb = b, no = o;
             for (uint8_t t = 0; t < 3; ++t) {
-                np = perm_turn[face][np];
-                nc = pair_turn[face][nc];
-                uint32_t there = (uint32_t) np * PAIR_CODES + nc;
-                if (!seen[there]) {
-                    seen[there] = 1;
-                    dist[there] = (uint8_t) (dist[here] + 1U);
-                    if (tail == PATTERNS) {
-                        fputs("pattern graph larger than expected\n", stderr);
-                        filled = 0;
-                        goto done;
-                    }
-                    queue[tail++] = there;
+                nb = block_turn[face][nb];
+                no = orient_turn[face][no];
+                if (pattern_dist[nb][no] == UINT8_MAX) {
+                    pattern_dist[nb][no] =
+                        (uint8_t) (pattern_dist[b][o] + 1U);
+                    queue[tail++] = (uint32_t) nb * ORIENTATIONS + no;
                 }
             }
         }
     }
-done:
-    free(seen);
     free(queue);
-    free(dist);
-    return filled;
+    return tail;
 }
 
 /* Exact distance of every full state, for gate H1. */
@@ -245,96 +236,52 @@ static uint8_t *exact_distances(void)
     return dist;
 }
 
-/* H2 for a distance table: fully populated, solved entry zero, expected max. */
-static int check_dist(const char *name, uint32_t reached, uint32_t size,
-                      uint8_t solved, uint8_t max, uint8_t expected_max)
-{
-    if (reached != size || solved != 0 || max != expected_max) {
-        fprintf(stderr, "H2 failed for %s: %u of %u reached, max %u\n", name,
-                reached, size, max);
-        return 0;
-    }
-    printf("H2 %s: %u entries, solved 0, max %u\n", name, size, max);
-    return 1;
-}
-
-static int check_orient_dist(uint32_t reached)
-{
-    uint8_t max = 0;
-    for (uint32_t i = 0; i < ORIENTATIONS; ++i)
-        if (orient_dist[i] > max)
-            max = orient_dist[i];
-    return check_dist("orient_dist", reached, ORIENTATIONS, orient_dist[0],
-                      max, 6);
-}
-
-/* Every used cell (oS < 9) filled, the padding never written. */
+/* H2 for the distance table: fully populated, solved entry zero, expected
+ * max.
+ */
 static int check_pattern_dist(uint32_t reached)
 {
     uint8_t max = 0;
-    for (uint32_t p = 0; p < PERMUTATIONS; ++p)
-        for (uint32_t s = 0; s < PATTERN_ROW; ++s) {
-            uint8_t d = pattern_dist[p][s];
-            if ((s < 9) != (d != UINT8_MAX)) {
-                fprintf(stderr, "H2 failed for pattern_dist at (%u, %u)\n",
-                        p, s);
+    for (uint32_t b = 0; b < BLOCKS; ++b)
+        for (uint32_t o = 0; o < ORIENTATIONS; ++o) {
+            uint8_t d = pattern_dist[b][o];
+            if (d == UINT8_MAX) {
+                fprintf(stderr, "H2 failed for pattern_dist at (%u, %u)\n", b,
+                        o);
                 return 0;
             }
-            if (s < 9 && d > max)
+            if (d > max)
                 max = d;
         }
-    return check_dist("pattern_dist", reached, PATTERNS, pattern_dist[0][0],
-                      max, 8);
+    if (reached != PATTERNS || pattern_dist[block_solved][0] != 0 ||
+        max != 10) {
+        fprintf(stderr, "H2 failed for pattern_dist: %u of %u reached, max "
+                        "%u\n",
+                reached, PATTERNS, max);
+        return 0;
+    }
+    printf("H2 pattern_dist: %u entries, solved 0, max %u\n", PATTERNS, max);
+    return 1;
 }
 
-/* H2 for a quarter-turn table: each face is a bijection on its valid
- * entries and four quarter turns are the identity. A turn need not move the
- * solved entry: D twists no corner, so it fixes the solved orientation.
+/* H2 for a quarter-turn table: each face is a bijection and four quarter
+ * turns are the identity. A turn need not move the solved entry: D twists no
+ * corner, so it fixes the solved orientation.
  */
-static int check_turns(const char *name, const uint16_t *turn, uint32_t size,
-                       int (*valid)(uint16_t), uint32_t expected)
+static int check_turns(const char *name, const uint16_t *turn, uint32_t size)
 {
     static uint8_t hit[PERMUTATIONS];
     for (uint8_t face = 0; face < 3; ++face) {
         const uint16_t *t = turn + face * size;
-        uint32_t count = 0;
         memset(hit, 0, size);
-        for (uint16_t i = 0; i < size; ++i) {
-            if (valid && !valid(i))
-                continue;
-            ++count;
-            if (t[i] >= size || (valid && !valid(t[i])) || hit[t[i]]++ ||
-                t[t[t[t[i]]]] != i) {
+        for (uint16_t i = 0; i < size; ++i)
+            if (t[i] >= size || hit[t[i]]++ || t[t[t[t[i]]]] != i) {
                 fprintf(stderr, "H2 failed for %s face %u at %u\n", name,
                         face, i);
                 return 0;
             }
-        }
-        if (count != expected) {
-            fprintf(stderr, "H2 failed for %s: %u valid entries\n", name,
-                    count);
-            return 0;
-        }
     }
-    printf("H2 %s: 3 x %u bijections of order 4\n", name, expected);
-    return 1;
-}
-
-/* H2 for the Lehmer weights: the largest digits sum to 7! - 1 and the
- * solved permutation, all digits zero, ranks to 0.
- */
-static int check_lehmer(void)
-{
-    uint32_t max = 0, solved = 0;
-    for (uint8_t i = 0; i < CUBIES; ++i) {
-        max += lehmer_weight[i][CUBIES - 1 - i];
-        solved += lehmer_weight[i][0];
-    }
-    if (max != PERMUTATIONS - 1 || solved) {
-        fprintf(stderr, "H2 failed for lehmer_weight: max %u\n", max);
-        return 0;
-    }
-    printf("H2 lehmer_weight: solved 0, max %u\n", max);
+    printf("H2 %s: 3 x %u bijections of order 4\n", name, size);
     return 1;
 }
 
@@ -377,22 +324,23 @@ static int check_rotation(void)
 static uint8_t pattern_of(const state_t *state)
 {
     state_t copy = *state;
-    return pattern_dist[rank_state(&copy) / ORIENTATIONS][pair_of(state) / 64];
+    return pattern_dist[block_code(state)][rank_state(&copy) % ORIENTATIONS];
 }
 
-/* H1: the heuristic, max(orient_dist, pattern_dist of the state and of its
- * two rotations), never exceeds the exact distance.
+/* H1: the heuristic, the largest pattern_dist over the state and its two
+ * rotations, never exceeds the exact distance, and it is 0 for the solved
+ * state only: the search takes a child with h = 0 for solved.
  */
 static int check_admissible(const uint8_t *exact)
 {
-    uint32_t tight = 0;
+    uint32_t tight = 0, zero = 0;
     uint64_t sum = 0;
     for (uint32_t rank = 0; rank < STATES; ++rank) {
         state_t state, once, twice;
         unrank_state(rank, &state);
         rotate_state(&state, &once);
         rotate_state(&once, &twice);
-        uint8_t h = orient_dist[rank % ORIENTATIONS];
+        uint8_t h = 0;
         const state_t *view[] = {&state, &once, &twice};
         for (uint8_t k = 0; k < 3; ++k)
             if (pattern_of(view[k]) > h)
@@ -403,10 +351,93 @@ static int check_admissible(const uint8_t *exact)
             return 0;
         }
         tight += h == exact[rank];
+        zero += h == 0;
         sum += h;
     }
-    printf("H1 h <= d over %u states (%u exact, mean h %.3f)\n", STATES, tight,
-           (double) sum / STATES);
+    if (zero != 1) {
+        fprintf(stderr, "H1 failed: h = 0 for %u states\n", zero);
+        return 0;
+    }
+    printf("H1 h <= d over %u states (%u exact, mean h %.3f), h = 0 for the "
+           "solved state only\n",
+           STATES, tight, (double) sum / STATES);
+    return 1;
+}
+
+static uint8_t mod3_at(uint16_t b, uint16_t o)
+{
+    return pattern_mod3[b][o >> 2] >> ((o & 3U) << 1) & 3U;
+}
+
+/* next_state[3 * slack + d % 3][v]: a node whose key is at distance d with
+ * `slack` moves to spare has a child whose key is at distance v modulo 3.
+ * The child is at d - 1, d or d + 1, whichever matches v, and one move is
+ * used up, so its slack is slack - 0, 1 or 2; -1 if that is negative.
+ */
+static void build_next_state(void)
+{
+    for (int slack = 0; slack < SLACKS; ++slack)
+        for (int m = 0; m < 3; ++m)
+            for (int v = 0; v < 4; ++v) {
+                int used = (v - m + 4) % 3; /* 0 closer, 1 same, 2 farther */
+                next_state[3 * slack + m][v] =
+                    (int8_t) (v == 3 || used > slack ? -1
+                                                     : 3 * (slack - used) + v);
+            }
+}
+
+/* H4: the 2-bit accessor agrees with the unpacked table modulo 3 at every
+ * index, even and odd, and next_state rebuilds from it exactly what the
+ * unpacked distances give, for every key, move and slack.
+ */
+static int pack_and_check(void)
+{
+    uint32_t agree[2] = {0};
+    for (uint32_t b = 0; b < BLOCKS; ++b)
+        for (uint32_t o = 0; o < ORIENTATIONS; ++o)
+            pattern_mod3[b][o >> 2] |=
+                (uint8_t) (pattern_dist[b][o] % 3U << ((o & 3U) << 1));
+    for (uint32_t b = 0; b < BLOCKS; ++b)
+        for (uint32_t o = 0; o < ORIENTATIONS; ++o) {
+            if (mod3_at((uint16_t) b, (uint16_t) o) != pattern_dist[b][o] % 3U) {
+                fprintf(stderr, "H4 failed for pattern_mod3 at (%u, %u)\n", b,
+                        o);
+                return 0;
+            }
+            ++agree[o & 1U];
+        }
+    printf("H4 pattern_mod3: %u even and %u odd indices agree with "
+           "pattern_dist modulo 3\n",
+           agree[0], agree[1]);
+    build_next_state();
+    uint64_t steps = 0;
+    for (uint32_t b = 0; b < BLOCKS; ++b)
+        for (uint32_t o = 0; o < ORIENTATIONS; ++o)
+            for (uint8_t face = 0; face < 3; ++face) {
+                uint16_t nb = (uint16_t) b, no = (uint16_t) o;
+                int d = pattern_dist[b][o];
+                for (uint8_t t = 0; t < 3; ++t) {
+                    nb = block_turn[face][nb];
+                    no = orient_turn[face][no];
+                    int nd = pattern_dist[nb][no];
+                    for (int slack = 0; slack < SLACKS; ++slack) {
+                        int left = slack - (nd - d + 1);
+                        int want = left < 0 ? -1 : 3 * left + nd % 3;
+                        if (nd - d > 1 || d - nd > 1 ||
+                            next_state[3 * slack + d % 3][mod3_at(nb, no)] !=
+                                want) {
+                            fprintf(stderr,
+                                    "H4 failed for next_state at (%u, %u)\n",
+                                    b, o);
+                            return 0;
+                        }
+                        ++steps;
+                    }
+                }
+            }
+    printf("H4 next_state: %llu steps (key, move, slack) agree with "
+           "pattern_dist\n",
+           (unsigned long long) steps);
     return 1;
 }
 
@@ -469,21 +500,6 @@ static void emit_c_u16(FILE *out, const char *name, const uint16_t *table,
     fputs("};\n", out);
 }
 
-static void emit_c_u8(FILE *out, const char *name, const uint8_t *table,
-                      uint32_t rows, uint32_t cols)
-{
-    fprintf(out, "static const uint8_t %s[%u][%u] = {\n", name, rows, cols);
-    for (uint32_t r = 0; r < rows; ++r) {
-        fputs("    {", out);
-        for (uint32_t c = 0; c < cols; ++c) {
-            uint8_t v = table[r * cols + c];
-            fprintf(out, "%s%u", c ? "," : "", v == UINT8_MAX ? 0 : v);
-        }
-        fputs("},\n", out);
-    }
-    fputs("};\n", out);
-}
-
 static int write_header(const char *path)
 {
     FILE *out = fopen(path, "w");
@@ -491,24 +507,31 @@ static int write_header(const char *path)
         return 0;
     fputs("/* Generated by gen.c; do not edit. */\n#include <stdint.h>\n",
           out);
-    emit_c_u16(out, "perm_turn", &perm_turn[0][0], 3, PERMUTATIONS);
+    fprintf(out, "enum { BLOCK_SOLVED = %u };\n", block_solved);
     emit_c_u16(out, "orient_turn", &orient_turn[0][0], 3, ORIENTATIONS);
-    emit_c_u16(out, "pair_turn", &pair_turn[0][0], 3, PAIR_CODES);
-    emit_c_u8(out, "pattern_dist", &pattern_dist[0][0], PERMUTATIONS,
-              PATTERN_ROW);
-    fprintf(out, "static const uint8_t orient_dist[%u] = {", ORIENTATIONS);
-    for (uint32_t i = 0; i < ORIENTATIONS; ++i)
-        fprintf(out, "%s%u", i ? "," : "", orient_dist[i]);
+    emit_c_u16(out, "block_turn", &block_turn[0][0], 3, BLOCKS);
+    fprintf(out, "static const uint8_t pattern_mod3[%u][%u] = {\n", BLOCKS,
+            ROW_BYTES);
+    for (uint32_t b = 0; b < BLOCKS; ++b) {
+        fputs("    {", out);
+        for (uint32_t i = 0; i < ROW_BYTES; ++i)
+            fprintf(out, "%s%u", i ? "," : "", pattern_mod3[b][i]);
+        fputs("},\n", out);
+    }
+    fprintf(out, "};\nstatic const int8_t next_state[%u][4] = {\n",
+            SEARCH_STATES);
+    for (uint32_t s = 0; s < SEARCH_STATES; ++s)
+        fprintf(out, "    {%d,%d,%d,%d},\n", next_state[s][0],
+                next_state[s][1], next_state[s][2], next_state[s][3]);
     fputs("};\n", out);
-    emit_c_u16(out, "lehmer_weight", &lehmer_weight[0][0], CUBIES, CUBIES);
     const struct {
         const char *name;
         const uint8_t *table;
         uint32_t size;
-    } small[] = {{"sym_pi", sym_pi, CUBIES},
-                 {"sym_tau", sym_tau, CUBIES},
-                 {"sym_face", sym_face, 3}};
-    for (uint32_t k = 0; k < 3; ++k) {
+    } small[] = {{"sym_pi", sym_pi, CUBIES},     {"sym_tau", sym_tau, CUBIES},
+                 {"sym_face", sym_face, 3},      {"block_of", block_of, CUBIES},
+                 {"pair_base", pair_base, 5}};
+    for (uint32_t k = 0; k < 5; ++k) {
         fprintf(out, "static const uint8_t %s[%u] = {", small[k].name,
                 small[k].size);
         for (uint32_t i = 0; i < small[k].size; ++i)
@@ -518,91 +541,93 @@ static int write_header(const char *path)
     return fclose(out) == 0;
 }
 
-/* .half rows, 16 values a line, each value times scale; a row shorter than
- * stride is padded with zeros so rows start stride entries apart.
- */
-static void emit_s_u16(FILE *out, const char *label, const uint16_t *table,
-                       uint32_t rows, uint32_t cols, uint32_t stride,
-                       uint16_t scale)
+/* The values of one .byte or .half table, 16 a line. */
+static void emit_s(FILE *out, const char *directive, const uint32_t *value,
+                   uint32_t count)
 {
-    fprintf(out, "%s:\n", label);
-    for (uint32_t r = 0; r < rows; ++r)
-        for (uint32_t i = 0; i < stride; ++i) {
-            uint16_t v = i < cols ? (uint16_t) (table[r * cols + i] * scale)
-                                  : 0;
-            fprintf(out, "%s%u%s", i % 16 ? ", " : "    .half ", v,
-                    i % 16 == 15 || i + 1 == stride ? "\n" : "");
-        }
+    for (uint32_t i = 0; i < count; ++i)
+        fprintf(out, "%s%u%s", i % 16 ? ", " : directive, value[i],
+                i % 16 == 15 || i + 1 == count ? "\n" : "");
 }
 
-static void emit_s_u8(FILE *out, const char *label, const uint8_t *table,
-                      uint32_t size, uint32_t spacing)
-{
-    fprintf(out, "%s:\n", label);
-    for (uint32_t i = 0; i < size; ++i) {
-        uint8_t v = table[i] == UINT8_MAX ? 0 : table[i];
-        fprintf(out, "%s%u%s%s", i % 16 ? ", " : "    .byte ", v,
-                spacing == 2 ? ", 0" : "",
-                i % 16 == 15 || i + 1 == size ? "\n" : "");
-    }
-}
-
-/* The assembly indexes by byte offset, so ranks and pair codes are stored
- * doubled and orient_dist gets a 2-byte stride: a looked-up offset is used
- * as is. pair_turn rows are padded to the orient_turn row length, so one
- * face offset register serves both tables.
+/* The assembly indexes by byte offset, so orientation ranks are stored
+ * doubled: a looked-up offset is used as is, and it is also the bit offset
+ * of the rank in a pattern row. A block code is stored as the address of its
+ * row, and each row starts with the addresses of the three rows its code
+ * turns into, so advancing a block code is one load. next_state is stored
+ * times 4, the offset of a row of itself, with 255 for -1.
  */
 static int write_asm(const char *path)
 {
+    static uint32_t value[3 * ORIENTATIONS + 1];
     FILE *out = fopen(path, "w");
     if (!out)
         return 0;
     fputs("# Generated by gen.c; do not edit.\n"
           "# Ripes has no .rodata, so the read-only tables live in .data.\n"
           ".data\n"
-          "# [face][2 * rank] -> 2 * rank after one quarter turn\n",
+          "# [face][2 * rank] -> 2 * rank after one quarter turn; 1 half of "
+          "padding\n"
+          "orient_turn:\n",
           out);
-    emit_s_u16(out, "perm_turn", &perm_turn[0][0], 3, PERMUTATIONS,
-               PERMUTATIONS, 2);
-    emit_s_u16(out, "orient_turn", &orient_turn[0][0], 3, ORIENTATIONS,
-               ORIENTATIONS, 2);
-    fputs("# [face][2 * c] -> 2 * c, rows padded to the orient_turn row\n",
+    for (uint32_t i = 0; i < 3 * ORIENTATIONS; ++i)
+        value[i] = 2U * orient_turn[i / ORIENTATIONS][i % ORIENTATIONS];
+    value[3 * ORIENTATIONS] = 0;
+    emit_s(out, "    .half ", value, 3 * ORIENTATIONS + 1);
+    fprintf(out,
+            "# one %u-byte row per block code: the rows of the code after a "
+            "quarter turn\n"
+            "# of R, B, D, then the distance modulo 3 of each orientation, "
+            "2 bits each\n"
+            "pattern:\n",
+            ROW_STRIDE);
+    for (uint32_t b = 0; b < BLOCKS; ++b) {
+        fprintf(out, "    .word pattern+%u, pattern+%u, pattern+%u\n",
+                ROW_STRIDE * block_turn[0][b], ROW_STRIDE * block_turn[1][b],
+                ROW_STRIDE * block_turn[2][b]);
+        for (uint32_t i = 0; i < ROW_BYTES; ++i)
+            value[i] = pattern_mod3[b][i];
+        value[ROW_BYTES] = 0;
+        emit_s(out, "    .byte ", value, ROW_BYTES + 1);
+    }
+    fputs("# [12 * slack + 4 * (distance mod 3) + value] -> the same offset "
+          "for the child\n"
+          "next_state:\n",
           out);
-    emit_s_u16(out, "pair_turn", &pair_turn[0][0], 3, PAIR_CODES,
-               ORIENTATIONS, 2);
-    fputs("# [i][k] = 2 * k * (6 - i)!\n", out);
-    emit_s_u16(out, "lehmer_weight", &lehmer_weight[0][0], 1,
-               CUBIES * CUBIES, CUBIES * CUBIES, 2);
-    fputs("# [p * 16 + oS] -> distance; 9 of each 16 bytes used\n", out);
-    emit_s_u8(out, "pattern_dist", &pattern_dist[0][0],
-              PERMUTATIONS * PATTERN_ROW, 1);
-    fputs("# [2 * rank] -> distance\n", out);
-    emit_s_u8(out, "orient_dist", orient_dist, ORIENTATIONS, 2);
+    for (uint32_t i = 0; i < SEARCH_STATES * 4; ++i)
+        value[i] = next_state[i / 4][i % 4] < 0
+                       ? 255U
+                       : 4U * (uint32_t) next_state[i / 4][i % 4];
+    emit_s(out, "    .byte ", value, SEARCH_STATES * 4);
     fputs("# the rotation about the fixed corner: [i] -> position and cubie\n"
           "# map, twist offset; 7 bytes each, padded to 8\n",
           out);
-    uint8_t padded[CUBIES + 1] = {0};
-    memcpy(padded, sym_pi, CUBIES);
-    emit_s_u8(out, "sym_pi", padded, CUBIES + 1, 1);
-    memcpy(padded, sym_tau, CUBIES);
-    emit_s_u8(out, "sym_tau", padded, CUBIES + 1, 1);
+    for (uint32_t i = 0; i < CUBIES + 1; ++i)
+        value[i] = i < CUBIES ? sym_pi[i] : 0;
+    fputs("sym_pi:\n", out);
+    emit_s(out, "    .byte ", value, CUBIES + 1);
+    for (uint32_t i = 0; i < CUBIES + 1; ++i)
+        value[i] = i < CUBIES ? sym_tau[i] : 0;
+    fputs("sym_tau:\n", out);
+    emit_s(out, "    .byte ", value, CUBIES + 1);
+    fprintf(out, ".equ BLOCK_SOLVED, %u\n", ROW_STRIDE * block_solved);
     return fclose(out) == 0;
 }
 
 /* H2 for the assembly encoding: read tables.s back and check every value
- * against the tables above, with the doubling, padding and 2-byte stride
- * applied, so a slip in write_asm cannot reach the target unnoticed.
+ * against the tables above, with the doubling, the row addresses and the
+ * padding applied, so a slip in write_asm cannot reach the target unnoticed.
  */
 static int check_asm(const char *path)
 {
-    enum { TABLES = 8 };
-    static const char *const label[TABLES] = {
-        "perm_turn",    "orient_turn", "pair_turn", "lehmer_weight",
-        "pattern_dist", "orient_dist", "sym_pi",    "sym_tau"};
-    static const uint32_t count[TABLES] = {
-        3 * PERMUTATIONS,           3 * ORIENTATIONS, 3 * ORIENTATIONS,
-        CUBIES * CUBIES,            PERMUTATIONS * PATTERN_ROW,
-        2 * ORIENTATIONS,           CUBIES + 1,       CUBIES + 1};
+    enum { TABLES = 5 };
+    static const char *const label[TABLES] = {"orient_turn", "pattern",
+                                              "next_state", "sym_pi",
+                                              "sym_tau"};
+    static const uint32_t count[TABLES] = {3 * ORIENTATIONS + 1,
+                                           BLOCKS * (3 + ROW_BYTES + 1),
+                                           SEARCH_STATES * 4, CUBIES + 1,
+                                           CUBIES + 1};
     uint32_t seen[TABLES] = {0};
     int table = -1;
     char line[512];
@@ -615,44 +640,55 @@ static int check_asm(const char *path)
             if (!strncmp(line, label[k], strlen(label[k])) &&
                 line[strlen(label[k])] == ':')
                 table = k;
-        if (strstr(line, ".half"))
+        int word = strstr(line, ".word") != NULL;
+        if (word)
+            t = strstr(line, ".word") + 5;
+        else if (strstr(line, ".half"))
             t = strstr(line, ".half") + 5;
         else if (strstr(line, ".byte"))
             t = strstr(line, ".byte") + 5;
         else
             continue;
         for (char *end; table >= 0; t = end + (*end == ',')) {
+            if (word) { /* an address: pattern+offset */
+                t += strspn(t, " ");
+                if (strncmp(t, "pattern+", 8))
+                    break;
+                t += 8;
+            }
             long v = strtol(t, &end, 10);
             if (end == t)
                 break;
             uint32_t i = seen[table]++, expect = 0;
+            uint32_t b = i / (3 + ROW_BYTES + 1), at = i % (3 + ROW_BYTES + 1);
             switch (table) {
             case 0:
-                expect = 2U * perm_turn[i / PERMUTATIONS][i % PERMUTATIONS];
+                expect = i < 3 * ORIENTATIONS
+                             ? 2U * orient_turn[i / ORIENTATIONS]
+                                               [i % ORIENTATIONS]
+                             : 0;
                 break;
             case 1:
-                expect = 2U * orient_turn[i / ORIENTATIONS][i % ORIENTATIONS];
+                if (word != (at < 3))
+                    expect = UINT32_MAX;
+                else if (at < 3)
+                    expect = b < BLOCKS ? ROW_STRIDE * block_turn[at][b] : 0;
+                else
+                    expect = b < BLOCKS && at < 3 + ROW_BYTES
+                                 ? pattern_mod3[b][at - 3]
+                                 : 0;
                 break;
             case 2:
-                expect = i % ORIENTATIONS < PAIR_CODES
-                             ? 2U * pair_turn[i / ORIENTATIONS]
-                                             [i % ORIENTATIONS]
+                expect = i < SEARCH_STATES * 4
+                             ? (uint8_t) (next_state[i / 4][i % 4] < 0
+                                              ? 255
+                                              : 4 * next_state[i / 4][i % 4])
                              : 0;
                 break;
             case 3:
-                expect = 2U * lehmer_weight[i / CUBIES][i % CUBIES];
-                break;
-            case 4:
-                expect = pattern_dist[i / PATTERN_ROW][i % PATTERN_ROW];
-                expect = expect == UINT8_MAX ? 0 : expect;
-                break;
-            case 5:
-                expect = i % 2 ? 0 : orient_dist[i / 2];
-                break;
-            case 6:
                 expect = i < CUBIES ? sym_pi[i] : 0;
                 break;
-            case 7:
+            case 4:
                 expect = i < CUBIES ? sym_tau[i] : 0;
                 break;
             }
@@ -671,24 +707,23 @@ static int check_asm(const char *path)
                     path, seen[k]);
             return 0;
         }
-    printf("H2 %s: every value matches, doubled and padded as encoded\n",
+    printf("H2 %s: every value matches, doubled, addressed and padded as "
+           "encoded\n",
            path);
     return 1;
 }
 
 int main(void)
 {
-    build_transitions();
-    uint32_t orient_reached = orient_bfs();
+    if (!build_transitions()) {
+        fputs("H2 failed for the block code\n", stderr);
+        return 1;
+    }
     uint32_t pattern_reached = pattern_bfs();
-    if (!check_turns("perm_turn", &perm_turn[0][0], PERMUTATIONS, NULL,
-                     PERMUTATIONS) ||
-        !check_turns("orient_turn", &orient_turn[0][0], ORIENTATIONS, NULL,
-                     ORIENTATIONS) ||
-        !check_turns("pair_turn", &pair_turn[0][0], PAIR_CODES, pair_valid,
-                     PAIR_STATES) ||
-        !check_lehmer() || !check_orient_dist(orient_reached) ||
-        !check_pattern_dist(pattern_reached) || !check_rotation())
+    if (!check_turns("orient_turn", &orient_turn[0][0], ORIENTATIONS) ||
+        !check_turns("block_turn", &block_turn[0][0], BLOCKS) ||
+        !check_pattern_dist(pattern_reached) || !check_rotation() ||
+        !pack_and_check())
         return 1;
     uint8_t *exact = exact_distances();
     if (!exact) {

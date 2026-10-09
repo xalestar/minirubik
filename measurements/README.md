@@ -64,12 +64,14 @@ to solved and has the expected length 11.
 | `sweep-v2.txt` | `80b9446` pattern database | 1,177,899 | 3,455,334 | `41752632313211` |
 | `sweep-v2-nibble.txt` | `experiments/nibble-pattern.patch` on `80b9446` (dropped) | 1,382,642 | 4,056,678 | `41752632313211` |
 | `sweep-r4.txt` | `f881296` orientation test first | 1,150,121 | 3,397,155 | `41752632313211` |
-| `sweep-v3.txt` | `c11831f` pattern database through two rotations (final) | 458,634 | 1,345,083 | `21354672313211` |
+| `sweep-v3.txt` | `c11831f` pattern database through two rotations | 458,634 | 1,345,083 | `21354672313211` |
+| `sweep-v4.txt` | v4: 2-bit pattern database over block codes, three views | 14,723 | 35,794 | `26154372332213` |
 
-All eight sweeps: 2,644 states, 0 failures. The final worst case,
-1,345,083, is 2.7% of the 5 x 10^7 limit. No state is slower in
-`sweep-v3.txt` than in `sweep-r4.txt`; the ratio per state runs from 1.70
-to 3.81.
+All nine sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
+state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
+state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
+`sweep-v3.txt`; that ratio runs from 13.6 to 78.5.
 
 For the nibble experiment, `pattern_dist` was also repacked two entries per
 byte, the even `oS` in the low nibble, 8 bytes per permutation (40,320 bytes
@@ -100,11 +102,24 @@ comparable; `sweep-v3.txt` is sorted.
 | `rubik.s` at `34a5e0f` (unchanged since `f881296`) | 1,048,184 | 1,448 | 121,332 + 392 |
 | GUI build at `34a5e0f` (`rubik-gui.s`, renderer in) | | 2,172 | 121,470 + 520 |
 | gcc -O2, v3 C (`ripes_ref.c` at `1eb4166`) | 1,461,106 | 2,480 | 119,604 `.rodata` + 19 `.sdata` |
-| v3 `c11831f`, final `rubik.s` | 464,819 | 2,316 | 121,348 + 520 |
-| final GUI build (`rubik-gui.s`, renderer in) | | 3,024 | 121,486 + 648 |
+| v3 `c11831f` | 464,819 | 2,316 | 121,348 + 520 |
+| v3 GUI build (`rubik-gui.s`, renderer in) | | 3,024 | 121,486 + 648 |
+| gcc -O2, v4 C (`ripes_ref.c`) | 49,983 | 2,492 | 123,650 `.rodata` + 35 `.sdata` |
+| v4 `rubik.s` | 13,540 | 2,436 | 128,172 + 448 |
+| v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
-but its static data, 122,134 bytes, is also within the 131,072 limit.
+but its static data, 122,134 bytes for v3 and 128,886 for v4, is also
+within the 131,072 limit; the v4 CLI build has 128,620. The GUI object is
+assembled for its sizes with `--defsym` for the three `LED_MATRIX_0_*`
+symbols.
+
+The v4 static data: `pattern` 123,480 bytes (630 rows of 196: three row
+addresses, 729 values of 2 bits, one byte of padding), `orient_turn` 4,376,
+`next_state` 144, the rotation 16, strings, test cases, move names and
+`pair_base` 156; `.bss` is 13 frame slots of 32 bytes and the 32-byte
+buffer for the rotated strings. The C build keeps the same 2-bit rows
+without the addresses (115,290 bytes) and a separate `block_turn`.
 
 gcc reference: `riscv64-elf-gcc` 16.2.0 (Homebrew; the same compiler as
 `riscv64-unknown-elf-gcc`, different target triple name),
@@ -116,7 +131,8 @@ that one state, the worst state of the assembly; the gcc build was not
 swept over all 2,644 states (the reviewer's sweep of the `f881296` build
 found the same worst state). The v3 C retires 4,232,771 instructions on
 `21354672313211`, the worst state of the v3 assembly, against 1,345,083,
-and 3,624,686 on `41752632313211`.
+and 3,624,686 on `41752632313211`. The v4 C retires 150,890 instructions
+on `26154372332213`, the worst state of the v4 assembly, against 35,794.
 
 From v3 on, `ripes_ref.c` loads `gp` first: gcc places the three small
 `sym_*` tables in `.sdata`, the linker reaches them through `gp`, and
@@ -126,7 +142,18 @@ program does not terminate.
 ## T7: the test cases on the pipelined models
 
 `make ripes-check RIPES=...`, three test cases (solved, the 3-move
-scramble `24173562322133`, the reference vector) in one run:
+scramble `24173562322133`, the reference vector) in one run. v4:
+
+| Model | Exit | Cycles | iret |
+| :--- | :---: | ---: | ---: |
+| `RV32_ISS` | 0 | 17,323 | 17,323 |
+| `RV32_5S` | 0 | 21,361 | 17,322 |
+| `RV32_6S_DUAL` | 0 | 21,115 | 17,322 |
+
+Alone, the solved case takes 1,240 instructions, the 3-move scramble 2,569
+and an invalid string (`1234567111111a`) 192, with exit code 2.
+
+v3 (`c11831f`) and before:
 
 | Model | Exit | Cycles | iret | Cycles at `f881296` | Cycles at `80b9446` |
 | :--- | :---: | ---: | ---: | ---: | ---: |
@@ -146,6 +173,59 @@ three report 4. So the ISS counts one extra when the halting `ecall` is not
 the last instruction, which is the case in `rubik.s`. Every `RV32_ISS`
 figure here therefore includes that one extra instruction; it is left in,
 since the assignment defines the measure as `--iret` on `RV32_ISS`.
+
+## v4: where the instructions went, and which table
+
+* `experiments/v3-nodes.c`, output `experiments/v3-nodes.txt`: a host model
+  of the v3 search loop that adds up the length of every basic block the
+  assembly passes. Measured minus model is 2,454 to 2,528 for all 2,644
+  states, the part outside the loop. Worst state: 39,719 children, 6,622
+  nodes, 33.8 instructions per child; 35.5% the three turn lookups and the
+  first test, 35.1% the two rotated lookups, 25.9% spill, pop and face
+  loop, 3.5% the orientation test. Nodes peak at depth 4 and 5 of 11. It
+  includes the v3 `ida.c`, so it builds at `1e6823e`.
+* `experiments/v4-heuristics.c`, output `experiments/v4-heuristics.txt`:
+  IDA* node counts over the distance-11 states for tables over other keys,
+  each looked up through 2, 3 or 6 symmetric images of the state. Children
+  generated for the worst state:
+
+  | Key | Entries | Bytes | Views | Worst | Mean |
+  | :--- | ---: | ---: | :---: | ---: | ---: |
+  | permutation, twists of cubies 0 3 (v3, no orientation test) | 45,360 | 80,640 | 3 | 42,041 | 14,074 |
+  | the same | | | 6 | 27,182 | 8,862 |
+  | permutation, twists of 3 cubies | 136,080 | 68,040 at 4 bits | 3 | 12,761 | 4,328 |
+  | the same | | | 6 | 8,879 | 2,934 |
+  | permutation, twists of 4 cubies | 408,240 | 102,060 at 2 bits | 3 | 4,157 | 1,164 |
+  | positions of 3 cubies, orientation | 153,090 | 76,545 at 4 bits | 3 | 9,807 | 1,647 |
+  | blocks 3 + 3 + 1 not told apart, parity, orientation | 102,060 | 102,060 | 6 | 4,878 | 1,399 |
+  | blocks 3 + 3 + 1, parity, orientation | 204,120 | 102,060 at 4 bits | 3 | 3,654 | 1,130 |
+  | the same | | | 6 | 1,679 | 625 |
+  | blocks 3 + 2 + 2, parity, orientation | 306,180 | 76,545 at 2 bits | 3 | 1,842 | 598 |
+  | the same | | | 6 | 1,002 | 369 |
+  | three pairs + 1, orientation (no parity) | 459,270 | 114,818 at 2 bits | 3 | 1,919 | 650 |
+  | **pairs {0,6} {1,5} not told apart, {2,4}, 3, parity, orientation (v4)** | **459,270** | **114,818 at 2 bits** | **3** | **903** | **317** |
+  | the same | | | 2 | 4,092 | 648 |
+  | the same, best labelling for 6 views ({0,3} {1,4}, {5,6}, 2) | 459,270 | | 6 | 786 | 222 |
+  | blocks 3 + 2 + 2 and 3 + 3 + 1 together | 510,300 | 127,575 at 2 bits | 3 | 1,224 | 429 |
+
+  Every labelling of each block shape was run (2,520 and 2,870 runs); the
+  table has the best of each. The permutation with 4 twists does not fit
+  next to its 30,240 bytes of `perm_turn`. With all 6 views the v4 table
+  itself gains nothing (903), and the labelling that does gain needs 6
+  lookups per node for 13% fewer children.
+* `experiments/v4-nodes.c`, output `experiments/v4-nodes.txt`: the same
+  kind of model for the v4 loop. Worst state: 903 children, 155 nodes;
+  27.8% turning the three views (11 per child), 40.1% the tests (9 per view
+  reached; a child reaches 1.00, 0.42 and 0.25 of them on average), 22.0%
+  per node, and 10.0% (3,591) outside the loop. Over all states the part
+  outside the loop is 3,264 to 4,146 instructions, 25.2% of the mean: it
+  includes the walks home from the three root keys, 118 keys tried on
+  average at 13 instructions each.
+* `make gates` at v4: H3 over all states takes 4.6 s (v3: 32.5 s); it also
+  checks that the walk home gives the BFS distance for all 459,270 keys.
+  Per distance-11 state, 317 children: the state's own view prunes 184
+  (57.9%), the view rotated once 56, rotated twice 23, and 57 nodes are
+  expanded.
 
 ## Smaller experiments
 
@@ -183,7 +263,8 @@ since the assignment defines the measure as `--iret` on `RV32_ISS`.
   to the smallest pruned f instead of by 1 would skip one bound value in
   4,010 of the 3,674,160 states, and in none of the 2,644 at distance 11.
   With the v3 heuristic: 20,955 states, 15 of them at distance 11.
-* `experiments/symmetry.c`, output `experiments/symmetry.txt`: the 48
+* `experiments/symmetry.c`, output `experiments/symmetry.txt` (it reads
+  the v3 `tables.h`, so it builds at `f5d417a`): the 48
   symmetries of the cube applied to every state, the data behind v3. Each
   of them, and inversion, preserves the distance on all 3,674,160 states.
   The states fall into 1,224,828 classes under the 3 rotations about the
