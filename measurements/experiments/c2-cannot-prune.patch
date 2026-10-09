@@ -1,0 +1,250 @@
+diff --git a/rubik.s b/rubik.s
+index 1686fe3..8ba29d6 100644
+--- a/rubik.s
++++ b/rubik.s
+@@ -484,6 +484,7 @@ solve_first:
+     addi s8, s8, -FRAME         # the slot at depth bound - 1
+     li   t3, 1
+     li   a1, 2
++    addi t5, t2, 24             # next_state rows from here on have slack 2 or more
+     j    iteration
+ deepen:
+     addi s8, s8, FRAME
+@@ -522,6 +523,8 @@ turn_R:
+     lw   a2, 0(a2)
+     add  t0, s5, a5
+     lhu  a5, 0(t0)
++    li   s3, -1
++    bgeu s0, t5, done0_R
+     srli t0, a5, 3
+     add  t0, t0, a2
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -531,6 +534,7 @@ turn_R:
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+     bltz s3, next_R
++done0_R:
+ catch_R:
+     lw   a3, 8(a3)
+     add  t0, s7, a6
+@@ -540,6 +544,8 @@ catch_R:
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_R
++    li   s10, -1
++    bgeu s1, t5, done1_R
+     srli t0, a6, 3
+     add  t0, t0, a3
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -549,6 +555,9 @@ catch_R:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_R
++done1_R:
++    li   s11, -1
++    bgeu s2, t5, done2_R
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -558,6 +567,37 @@ catch_R:
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+     bltz s11, next_R
++done2_R:
++    bgez s3, have0_R
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++have0_R:
++    bgez s10, have1_R
++    srli t0, a6, 3
++    add  t0, t0, a3
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a6, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s1
++    lb   s10, 0(t0)
++have1_R:
++    bgez s11, have2_R
++    srli t0, a7, 3
++    add  t0, t0, a4
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a7, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s2
++    lb   s11, 0(t0)
++have2_R:
+     li   t6, 0                  # the child's parent face
+     j    passed
+ next_R:
+@@ -578,6 +618,8 @@ turn_B:
+     lw   a2, 4(a2)
+     add  t0, s6, a5
+     lhu  a5, 0(t0)
++    li   s3, -1
++    bgeu s0, t5, done0_B
+     srli t0, a5, 3
+     add  t0, t0, a2
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -587,6 +629,7 @@ turn_B:
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+     bltz s3, next_B
++done0_B:
+ catch_B:
+     lw   a3, 0(a3)
+     add  t0, s5, a6
+@@ -596,6 +639,8 @@ catch_B:
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_B
++    li   s10, -1
++    bgeu s1, t5, done1_B
+     srli t0, a6, 3
+     add  t0, t0, a3
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -605,6 +650,9 @@ catch_B:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_B
++done1_B:
++    li   s11, -1
++    bgeu s2, t5, done2_B
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -614,6 +662,37 @@ catch_B:
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+     bltz s11, next_B
++done2_B:
++    bgez s3, have0_B
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++have0_B:
++    bgez s10, have1_B
++    srli t0, a6, 3
++    add  t0, t0, a3
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a6, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s1
++    lb   s10, 0(t0)
++have1_B:
++    bgez s11, have2_B
++    srli t0, a7, 3
++    add  t0, t0, a4
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a7, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s2
++    lb   s11, 0(t0)
++have2_B:
+     li   t6, 1                  # the child's parent face
+     j    passed
+ next_B:
+@@ -633,6 +712,8 @@ turn_D:
+     lw   a2, 8(a2)
+     add  t0, s7, a5
+     lhu  a5, 0(t0)
++    li   s3, -1
++    bgeu s0, t5, done0_D
+     srli t0, a5, 3
+     add  t0, t0, a2
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -642,6 +723,7 @@ turn_D:
+     add  t0, t0, s0
+     lb   s3, 0(t0)
+     bltz s3, next_D
++done0_D:
+ catch_D:
+     lw   a3, 4(a3)
+     add  t0, s6, a6
+@@ -651,6 +733,8 @@ catch_D:
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_D
++    li   s10, -1
++    bgeu s1, t5, done1_D
+     srli t0, a6, 3
+     add  t0, t0, a3
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -660,6 +744,9 @@ catch_D:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_D
++done1_D:
++    li   s11, -1
++    bgeu s2, t5, done2_D
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -669,6 +756,37 @@ catch_D:
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+     bltz s11, next_D
++done2_D:
++    bgez s3, have0_D
++    srli t0, a5, 3
++    add  t0, t0, a2
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a5, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s0
++    lb   s3, 0(t0)
++have0_D:
++    bgez s10, have1_D
++    srli t0, a6, 3
++    add  t0, t0, a3
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a6, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s1
++    lb   s10, 0(t0)
++have1_D:
++    bgez s11, have2_D
++    srli t0, a7, 3
++    add  t0, t0, a4
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a7, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s2
++    lb   s11, 0(t0)
++have2_D:
+     li   t6, 2                  # the child's parent face
+     j    passed
+ next_D:
+@@ -687,11 +805,11 @@ pop:
+     lw   s2, 28(s4)
+     lbu  t4, 18(s4)
+     mv   a0, t4                 # the child had all three views up to date
+-    lbu  t5, 19(s4)
++    lbu  t0, 19(s4)
+     lbu  t6, -13(s4)            # the face of the slot before
+-    beqz t5, next_R
+-    beq  t5, t3, next_B
+-    beq  t5, a1, next_D
++    beqz t0, next_R
++    beq  t0, t3, next_B
++    beq  t0, a1, next_D
+     j    deepen                 # face 3: the slot in front of the root's
+ passed:
+     sb   t4, 18(s4)             # this move, for the resume and the answer

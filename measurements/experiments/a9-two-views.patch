@@ -1,0 +1,85 @@
+diff --git a/rubik.s b/rubik.s
+index 1686fe3..5a2295d 100644
+--- a/rubik.s
++++ b/rubik.s
+@@ -535,9 +535,6 @@ catch_R:
+     lw   a3, 8(a3)
+     add  t0, s7, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 4(a4)
+-    add  t0, s6, a7
+-    lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_R
+     srli t0, a6, 3
+@@ -549,15 +546,7 @@ catch_R:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_R
+-    srli t0, a7, 3
+-    add  t0, t0, a4
+-    lbu  t0, 12(t0)             # the byte of 4 values
+-    andi t1, a7, 6
+-    srl  t0, t0, t1
+-    andi t0, t0, 3              # the child's distance modulo 3
+-    add  t0, t0, s2
+-    lb   s11, 0(t0)
+-    bltz s11, next_R
++    li   s11, 0
+     li   t6, 0                  # the child's parent face
+     j    passed
+ next_R:
+@@ -591,9 +580,6 @@ catch_B:
+     lw   a3, 0(a3)
+     add  t0, s5, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 8(a4)
+-    add  t0, s7, a7
+-    lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_B
+     srli t0, a6, 3
+@@ -605,15 +591,7 @@ catch_B:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_B
+-    srli t0, a7, 3
+-    add  t0, t0, a4
+-    lbu  t0, 12(t0)             # the byte of 4 values
+-    andi t1, a7, 6
+-    srl  t0, t0, t1
+-    andi t0, t0, 3              # the child's distance modulo 3
+-    add  t0, t0, s2
+-    lb   s11, 0(t0)
+-    bltz s11, next_B
++    li   s11, 0
+     li   t6, 1                  # the child's parent face
+     j    passed
+ next_B:
+@@ -646,9 +624,6 @@ catch_D:
+     lw   a3, 4(a3)
+     add  t0, s6, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 0(a4)
+-    add  t0, s5, a7
+-    lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_D
+     srli t0, a6, 3
+@@ -660,15 +635,7 @@ catch_D:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_D
+-    srli t0, a7, 3
+-    add  t0, t0, a4
+-    lbu  t0, 12(t0)             # the byte of 4 values
+-    andi t1, a7, 6
+-    srl  t0, t0, t1
+-    andi t0, t0, 3              # the child's distance modulo 3
+-    add  t0, t0, s2
+-    lb   s11, 0(t0)
+-    bltz s11, next_D
++    li   s11, 0
+     li   t6, 2                  # the child's parent face
+     j    passed
+ next_D:

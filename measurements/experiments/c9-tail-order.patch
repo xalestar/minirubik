@@ -1,0 +1,100 @@
+diff --git a/rubik.s b/rubik.s
+index 1686fe3..b277ebe 100644
+--- a/rubik.s
++++ b/rubik.s
+@@ -540,15 +540,6 @@ catch_R:
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_R
+-    srli t0, a6, 3
+-    add  t0, t0, a3
+-    lbu  t0, 12(t0)             # the byte of 4 values
+-    andi t1, a6, 6
+-    srl  t0, t0, t1
+-    andi t0, t0, 3              # the child's distance modulo 3
+-    add  t0, t0, s1
+-    lb   s10, 0(t0)
+-    bltz s10, next_R
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -558,6 +549,15 @@ catch_R:
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+     bltz s11, next_R
++    srli t0, a6, 3
++    add  t0, t0, a3
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a6, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s1
++    lb   s10, 0(t0)
++    bltz s10, next_R
+     li   t6, 0                  # the child's parent face
+     j    passed
+ next_R:
+@@ -596,15 +596,6 @@ catch_B:
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_B
+-    srli t0, a6, 3
+-    add  t0, t0, a3
+-    lbu  t0, 12(t0)             # the byte of 4 values
+-    andi t1, a6, 6
+-    srl  t0, t0, t1
+-    andi t0, t0, 3              # the child's distance modulo 3
+-    add  t0, t0, s1
+-    lb   s10, 0(t0)
+-    bltz s10, next_B
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -614,6 +605,15 @@ catch_B:
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+     bltz s11, next_B
++    srli t0, a6, 3
++    add  t0, t0, a3
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a6, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s1
++    lb   s10, 0(t0)
++    bltz s10, next_B
+     li   t6, 1                  # the child's parent face
+     j    passed
+ next_B:
+@@ -651,15 +651,6 @@ catch_D:
+     lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_D
+-    srli t0, a6, 3
+-    add  t0, t0, a3
+-    lbu  t0, 12(t0)             # the byte of 4 values
+-    andi t1, a6, 6
+-    srl  t0, t0, t1
+-    andi t0, t0, 3              # the child's distance modulo 3
+-    add  t0, t0, s1
+-    lb   s10, 0(t0)
+-    bltz s10, next_D
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -669,6 +660,15 @@ catch_D:
+     add  t0, t0, s2
+     lb   s11, 0(t0)
+     bltz s11, next_D
++    srli t0, a6, 3
++    add  t0, t0, a3
++    lbu  t0, 12(t0)             # the byte of 4 values
++    andi t1, a6, 6
++    srl  t0, t0, t1
++    andi t0, t0, 3              # the child's distance modulo 3
++    add  t0, t0, s1
++    lb   s10, 0(t0)
++    bltz s10, next_D
+     li   t6, 2                  # the child's parent face
+     j    passed
+ next_D:

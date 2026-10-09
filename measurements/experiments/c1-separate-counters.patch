@@ -1,0 +1,114 @@
+diff --git a/rubik.s b/rubik.s
+index 1686fe3..5ba7a34 100644
+--- a/rubik.s
++++ b/rubik.s
+@@ -518,6 +518,7 @@ face_R:
+ first_R:
+     li   t4, 3
+     li   a0, 4
++    li   t5, 4
+ turn_R:
+     lw   a2, 0(a2)
+     add  t0, s5, a5
+@@ -535,9 +536,6 @@ catch_R:
+     lw   a3, 8(a3)
+     add  t0, s7, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 4(a4)
+-    add  t0, s6, a7
+-    lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_R
+     srli t0, a6, 3
+@@ -549,6 +547,12 @@ catch_R:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_R
++catch2_R:
++    lw   a4, 4(a4)
++    add  t0, s6, a7
++    lhu  a7, 0(t0)
++    addi t5, t5, -1
++    bne  t5, t4, catch2_R
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -574,6 +578,7 @@ face_B:
+ first_B:
+     li   t4, 3
+     li   a0, 4
++    li   t5, 4
+ turn_B:
+     lw   a2, 4(a2)
+     add  t0, s6, a5
+@@ -591,9 +596,6 @@ catch_B:
+     lw   a3, 0(a3)
+     add  t0, s5, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 8(a4)
+-    add  t0, s7, a7
+-    lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_B
+     srli t0, a6, 3
+@@ -605,6 +607,12 @@ catch_B:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_B
++catch2_B:
++    lw   a4, 8(a4)
++    add  t0, s7, a7
++    lhu  a7, 0(t0)
++    addi t5, t5, -1
++    bne  t5, t4, catch2_B
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -629,6 +637,7 @@ face_D:
+     lhu  a7, 16(s4)
+     li   t4, 3
+     li   a0, 4
++    li   t5, 4
+ turn_D:
+     lw   a2, 8(a2)
+     add  t0, s7, a5
+@@ -646,9 +655,6 @@ catch_D:
+     lw   a3, 4(a3)
+     add  t0, s6, a6
+     lhu  a6, 0(t0)
+-    lw   a4, 0(a4)
+-    add  t0, s5, a7
+-    lhu  a7, 0(t0)
+     addi a0, a0, -1
+     bne  a0, t4, catch_D
+     srli t0, a6, 3
+@@ -660,6 +666,12 @@ catch_D:
+     add  t0, t0, s1
+     lb   s10, 0(t0)
+     bltz s10, next_D
++catch2_D:
++    lw   a4, 0(a4)
++    add  t0, s5, a7
++    lhu  a7, 0(t0)
++    addi t5, t5, -1
++    bne  t5, t4, catch2_D
+     srli t0, a7, 3
+     add  t0, t0, a4
+     lbu  t0, 12(t0)             # the byte of 4 values
+@@ -687,11 +699,12 @@ pop:
+     lw   s2, 28(s4)
+     lbu  t4, 18(s4)
+     mv   a0, t4                 # the child had all three views up to date
+-    lbu  t5, 19(s4)
++    mv   t5, t4
++    lbu  t0, 19(s4)
+     lbu  t6, -13(s4)            # the face of the slot before
+-    beqz t5, next_R
+-    beq  t5, t3, next_B
+-    beq  t5, a1, next_D
++    beqz t0, next_R
++    beq  t0, t3, next_B
++    beq  t0, a1, next_D
+     j    deepen                 # face 3: the slot in front of the root's
+ passed:
+     sb   t4, 18(s4)             # this move, for the resume and the answer

@@ -73,7 +73,7 @@ to solved and has the expected length 11.
 | `sweep-r9.txt` | `555f1d3` r9: the farthest view of the root is searched first | 13,377 | 26,787 | `21354672313211` |
 | `sweep-r10.txt` | r10: one block per face in the walk home | 13,169 | 26,580 | `21354672313211` |
 
-All fifteen sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All fifteen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -289,6 +289,29 @@ to the cube arrays of `solver.c` on the host: all solve.
 On `RV32_5S` the three test cases take 20,507 cycles for 16,219
 instructions at r8 and 20,190 for 16,275 at r7: fewer instructions, more
 cycles.
+
+### Built, swept and dropped
+
+Six variants were built on r10 (`b8612ad`) as changes to `rubik.s` only and
+swept on Ripes. Each patch is in `experiments/` and applies to that commit.
+All six sweeps: 2,644 states, 0 failures.
+
+| Sweep | Patch | Mean | Worst | Worst state | `.text` | Why dropped |
+| :--- | :--- | ---: | ---: | :--- | ---: | :--- |
+| `sweep-r10.txt` | (r10) | 13,169 | 26,580 | `21354672313211` | 2,804 | |
+| `sweep-c9-tail-order.txt` | `c9-tail-order.patch`: the third view tested before the second | 13,190 | 26,895 | `21354672313211` | 2,804 | slower: +315 |
+| `sweep-c9-face-order.txt` | `c9-face-order.patch`: face blocks in the order R, D, B | 13,203 | 26,656 | `45312672313211` | 2,804 | slower: +76 |
+| `sweep-c10-unroll.txt` | `c10-unroll.patch`: the first view's three turns unrolled, dispatch on the turn | 12,882 | 26,180 | `21354672313211` | 3,152 | faster by 400 (-1.5%), but `.text` is over gcc's 3,092: check 5 fails |
+| `sweep-c1-separate-counters.txt` | `c1-separate-counters.patch`: one catch-up counter for each rotated view | 13,353 | 26,856 | `21354672313211` | 2,844 | slower: +276 |
+| `sweep-a9-two-views.txt` | `a9-two-views.patch`: the third view is carried but not tested | 18,648 | 97,400 | `12354761112323` | 2,672 | slower: 3.7 times |
+| `sweep-c2-cannot-prune.txt` | `c2-cannot-prune.patch`: a view with slack 2 or more is tested only for a child that passes the others | 14,265 | 28,874 | `21354672313211` | 3,204 | slower: +2,294, and `.text` over gcc's |
+
+The model below had 26,895, 26,694, 26,420, 26,853 and 27,434 for the
+first four and the last; the unrolled loop does better than its count by
+240 because the count kept the `li t4, 3` at the head of every face block,
+which the unrolled loop does not need. The last one is worse
+than its count because the test left out has to be flagged (a `li` for
+every view reached) and looked at again for every child that passes.
 
 ### Counted and not built
 
