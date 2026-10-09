@@ -65,9 +65,10 @@ to solved and has the expected length 11.
 | `sweep-v2-nibble.txt` | `experiments/nibble-pattern.patch` on `80b9446` (dropped) | 1,382,642 | 4,056,678 | `41752632313211` |
 | `sweep-r4.txt` | `f881296` orientation test first | 1,150,121 | 3,397,155 | `41752632313211` |
 | `sweep-v3.txt` | `c11831f` pattern database through two rotations | 458,634 | 1,345,083 | `21354672313211` |
-| `sweep-v4.txt` | v4: 2-bit pattern database over block codes, three views | 14,723 | 35,794 | `26154372332213` |
+| `sweep-v4.txt` | `05aafc2` v4: 2-bit pattern database over block codes, three views | 14,723 | 35,794 | `26154372332213` |
+| `sweep-r5.txt` | r5: a child's first face starts from the registers | 14,343 | 34,730 | `26154372332213` |
 
-All nine sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All ten sweeps: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -105,7 +106,8 @@ comparable; `sweep-v3.txt` is sorted.
 | v3 `c11831f` | 464,819 | 2,316 | 121,348 + 520 |
 | v3 GUI build (`rubik-gui.s`, renderer in) | | 3,024 | 121,486 + 648 |
 | gcc -O2, v4 C (`ripes_ref.c`) | 49,983 | 2,492 | 123,650 `.rodata` + 35 `.sdata` |
-| v4 `rubik.s` | 13,540 | 2,436 | 128,172 + 448 |
+| v4 `rubik.s` at `05aafc2` | 13,540 | 2,436 | 128,172 + 448 |
+| r5 | 13,211 | 2,440 | 128,172 + 448 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -214,7 +216,7 @@ since the assignment defines the measure as `--iret` on `RV32_ISS`.
   itself gains nothing (903), and the labelling that does gain needs 6
   lookups per node for 13% fewer children.
 * `experiments/v4-nodes.c`, output `experiments/v4-nodes.txt`: the same
-  kind of model for the v4 loop. Worst state: 903 children, 155 nodes;
+  kind of model for the v4 loop at `05aafc2`. Worst state: 903 children, 155 nodes;
   27.8% turning the three views (11 per child), 40.1% the tests (9 per view
   reached; a child reaches 1.00, 0.42 and 0.25 of them on average), 22.0%
   per node, and 10.0% (3,591) outside the loop. Over all states the part
@@ -226,6 +228,16 @@ since the assignment defines the measure as `--iret` on `RV32_ISS`.
   Per distance-11 state, 317 children: the state's own view prunes 184
   (57.9%), the view rotated once 56, rotated twice 23, and 57 nodes are
   expanded.
+
+## After v4: shorter paths through the same search
+
+Each row is one commit on top of v4; the search, its tables and its node
+counts do not change. Worst state `26154372332213` in every row.
+
+| Sweep | Change | Counted before | Mean | Worst |
+| :--- | :--- | :--- | ---: | ---: |
+| `sweep-v4.txt` | | | 14,723 | 35,794 |
+| `sweep-r5.txt` | r5: a node that was just a child starts its first face from the registers, at the face after its parent's: no 6 loads, no skip test | 7 for each of 152 descents: -1,064 | 14,343 | 34,730 |
 
 ## Smaller experiments
 

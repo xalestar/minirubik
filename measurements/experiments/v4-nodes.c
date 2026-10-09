@@ -1,5 +1,5 @@
-/* Host model of the v4 search loop: where the retired instructions of
- * rubik.s go. It walks the same tree in the same order as the assembly and
+/* Host model of the v4 search loop (rubik.s at 05aafc2): where the retired
+ * instructions go. It walks the same tree in the same order as the assembly and
  * adds the length of every basic block it passes, split by what the block
  * is for:
  *   turn   the 3 views turned once, and the turn counter              9 + 2

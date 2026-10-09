@@ -410,7 +410,8 @@ iteration:
 # One block per face: the node's coordinates are loaded, then turned three
 # times. Each view turns its own face: the state's face, and the face that
 # becomes when the cube is rotated once and twice (R -> D -> B -> R). A
-# child is tested view by view, and the first negative row ends it.
+# child is tested view by view, and the first negative row ends it. A node
+# is entered at first_R or first_B, after the loads: it was just a child.
 face_R:
     beqz t6, face_B             # skip the face the parent just turned
     lw   a2, 0(s4)
@@ -419,6 +420,7 @@ face_R:
     lhu  a5, 12(s4)
     lhu  a6, 14(s4)
     lhu  a7, 16(s4)
+first_R:
     li   t4, 3
 turn_R:
     lw   a2, 0(a2)
@@ -470,6 +472,7 @@ face_B:
     lhu  a5, 12(s4)
     lhu  a6, 14(s4)
     lhu  a7, 16(s4)
+first_B:
     li   t4, 3
 turn_B:
     lw   a2, 4(a2)
@@ -600,7 +603,8 @@ passed:
     sw   s1, 24(s4)
     sw   s2, 28(s4)
     mv   t6, t5
-    j    face_R
+    bnez t5, first_R            # the child's coordinates are in the registers:
+    j    first_B                # its first face, R, or B after an R
 found:
     sub  a0, s4, s9
     srli a0, a0, 5              # FRAME = 32
