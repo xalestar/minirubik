@@ -70,42 +70,39 @@ main:
     sw   zero, 4(sp)            # status
 case_loop:
     lw   t0, 0(sp)
-    lw   a0, 0(t0)              # input string, 0 ends the list
-    beqz a0, finish
+    lw   s8, 0(t0)              # input string, 0 ends the list
+    beqz s8, finish
+    mv   a0, s8
     li   a7, 4
     ecall
-    lw   t0, 0(sp)
-    lw   a0, 0(t0)
+    mv   a0, s8
     jal  ra, parse
     beqz a2, case_invalid
     mv   s11, a1                # parity, the same in all three views
     la   s9, frames
-    lw   t0, 0(sp)
-    lw   a0, 0(t0)
+    la   s10, rotated
+    mv   a0, s8
     jal  ra, coords
     sw   a2, -64(s9)            # the root's views, in the first slot in front
     sh   a3, -52(s9)
-    lw   t0, 0(sp)              # the same state rotated once, then twice
-    lw   a0, 0(t0)
-    la   a1, rotated
+    mv   a0, s8                 # the same state rotated once, then twice
+    mv   a1, s10
     jal  ra, rotate
-    la   a0, rotated
+    mv   a0, s10
     mv   a1, s11
     jal  ra, coords
     sw   a2, -60(s9)
     sh   a3, -50(s9)
-    la   a0, rotated
-    addi a1, a0, 16
+    mv   a0, s10
+    addi a1, s10, 16
     jal  ra, rotate
-    la   a0, rotated
-    addi a0, a0, 16
+    addi a0, s10, 16
     mv   a1, s11
     jal  ra, coords
     sw   a2, -56(s9)
     sh   a3, -48(s9)
 .if RENDER
-    lw   t0, 0(sp)
-    lw   a0, 0(t0)
+    mv   a0, s8
     jal  ra, render_init        # draw the scrambled cube
 .endif
     jal  ra, solve
@@ -286,11 +283,10 @@ coords_mate:
 # of that key, a1 = the distance modulo 3. Walks home: a neighbour one closer
 # is one whose value is one less modulo 3, and it is never on the face of
 # the step before. One block per face, as in the search. Needs s5 s6 s7 =
-# orient_turn of R, B, D and s8 = the solved row.
+# orient_turn of R, B, D, s8 = the solved row and t3 = 1; returns through a7.
 root_dist:
     li   a0, 0
     li   a4, -1                 # the face of the step before
-    li   t2, 1
     srli t0, a5, 3
     add  t0, t0, a2
     lbu  t0, 12(t0)
@@ -324,7 +320,7 @@ root_turn_R:
     addi t4, t4, -1
     bnez t4, root_turn_R
 root_B:
-    beq  a4, t2, root_D
+    beq  a4, t3, root_D
     mv   a3, a2
     mv   a6, a5
     li   t4, 3
@@ -370,7 +366,7 @@ root_closer:
     addi a0, a0, 1
     j    root_step
 root_done:
-    jalr zero, ra, 0
+    jalr zero, a7, 0
 
 # solve: the first slot in front of frames holds the three views of the
 # root (bytes 0..17) -> a0 = solution length. Move k of the solution is bytes
@@ -379,7 +375,8 @@ root_done:
 # its test prunes the most, and every child pays for it. The other two
 # follow in the same cyclic order, so of two views equally far the one whose
 # follower is farther goes first. This is the search of the cube rotated
-# that many times; found turns the faces back. Writes the count to 16(sp).
+# that many times; found turns the faces back. Writes the count to 16(sp)
+# and the solved row to 20(sp).
 # Registers while searching:
 #   a2 a3 a4  the child's pattern row in each view
 #   a5 a6 a7  2 * its orientation rank in each view
@@ -392,15 +389,16 @@ root_done:
 #   t3 a1  the constants 1 and 2            t0 t1 scratch
 #   a0 turns left when the rotated views were last turned
 solve:
-    mv   s3, ra
     la   s5, orient_turn
     addi s6, s5, ORIENT_FACE
     addi s7, s6, ORIENT_FACE
     la   s8, pattern
     li   t0, BLOCK_SOLVED
     add  s8, s8, t0
+    sw   s8, 20(sp)             # replay compares with it
     li   t0, 3
     sb   t0, -13(s9)            # byte 19 of the slot in front of the root's
+    li   t3, 1
     li   s10, 0                 # the largest of the three distances
     mv   s4, s9                 # s4 t6: the view's row and orientation
     mv   t6, s9
@@ -410,7 +408,7 @@ solve_view:
     lhu  a5, -52(t6)
     sw   a2, 0(s4)
     sh   a5, 12(t6)
-    jal  ra, root_dist
+    jal  a7, root_dist
     sb   a0, -44(s4)            # kept in the slot in front, bytes 20 24 28
     bgeu s10, a0, solve_kept
     mv   s10, a0
@@ -424,7 +422,6 @@ solve_kept:
     addi s4, s4, 4
     addi t6, t6, 2
     bltu s4, s11, solve_view
-    mv   ra, s3
     mv   a0, s10
     beqz s10, solve_done        # already solved
     lbu  t0, -44(s9)            # the first view: the farthest, and of two
@@ -482,7 +479,6 @@ solve_first:
     slli s8, s10, 5             # FRAME = 32
     add  s8, s8, s9
     addi s8, s8, -FRAME         # the slot at depth bound - 1
-    li   t3, 1
     li   a1, 2
     j    iteration
 deepen:
@@ -874,9 +870,7 @@ replay_next:
     addi s2, s2, FRAME
     j    replay_move
 replay_done:
-    la   t0, pattern
-    li   t1, BLOCK_SOLVED
-    add  t0, t0, t1
+    lw   t0, 20(sp)             # the solved row
     xor  t1, s3, t0
     xor  t2, s4, t0
     or   t1, t1, t2

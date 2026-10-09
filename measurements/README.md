@@ -71,9 +71,10 @@ to solved and has the expected length 11.
 | `sweep-r7.txt` | `f83c138` r7: the walk home skips the face of the step before | 13,887 | 34,035 | `26154372332213` |
 | `sweep-r8.txt` | `f803bf3` r8: the rotated views turn only when the first test passes | 13,559 | 32,825 | `26154372332213` |
 | `sweep-r9.txt` | `555f1d3` r9: the farthest view of the root is searched first | 13,377 | 26,787 | `21354672313211` |
-| `sweep-r10.txt` | r10: one block per face in the walk home | 13,169 | 26,580 | `21354672313211` |
+| `sweep-r10.txt` | `b8612ad` r10: one block per face in the walk home | 13,169 | 26,580 | `21354672313211` |
+| `sweep-r11.txt` | r11: shorter set-up around solve | 13,156 | 26,567 | `21354672313211` |
 
-All fifteen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
+All sixteen sweeps of kept or earlier versions: 2,644 states, 0 failures. The v3 worst case, 1,345,083,
 is 2.7% of the 5 x 10^7 limit; the v4 worst case, 35,794, is 0.07%. No
 state is slower in `sweep-v3.txt` than in `sweep-r4.txt`; the ratio per
 state runs from 1.70 to 3.81. No state is slower in `sweep-v4.txt` than in
@@ -120,7 +121,8 @@ comparable; `sweep-v3.txt` is sorted.
 | r8 `f803bf3` | 12,540 | 2,488 | 128,172 + 480 |
 | gcc -O2, r9 C | 39,093 | 3,092 | 123,650 `.rodata` + 35 `.sdata` |
 | r9 `555f1d3` | 11,957 | 2,692 | 128,172 + 480 |
-| r10 | 11,728 | 2,804 | 128,172 + 480 |
+| r10 `b8612ad` | 11,728 | 2,804 | 128,172 + 480 |
+| r11 | 11,715 | 2,760 | 128,172 + 480 |
 | v4 GUI build (`rubik-gui.s`, renderer in) | | 3,128 | 128,310 + 576 |
 
 The GUI build is not measured with `--iret` (the CLI cannot assemble it),
@@ -176,7 +178,9 @@ r10, the same run:
 | `RV32_5S` | 0 | 19,675 | 15,364 |
 | `RV32_6S_DUAL` | 0 | 19,605 | 15,364 |
 
-Alone at r10: solved 1,255, the 3-move scramble 2,408, invalid 192.
+Alone at r10: solved 1,255, the 3-move scramble 2,408, invalid 192. At r11
+the three cases together take 15,327 instructions on `RV32_ISS`, 19,631
+cycles on `RV32_5S` and 19,567 on `RV32_6S_DUAL`.
 
 v3 (`c11831f`) and before:
 
@@ -269,6 +273,7 @@ changes which view is tested first, and with it the order of the faces.
 | `sweep-r8.txt` | r8: the two rotated views are turned only for a child that passes the test of the state's own view; they then catch up, both together, on the turns they missed (6 a turn, 2 to count). `make gates`: 355 turns of a rotated view per state instead of 635 | worst state: 470 catch-up steps of 8, 1 for each of 304 face blocks and 142 pops, against 6 for each of 903 children: 4,206 against 5,418 | 13,559 | 32,825 |
 | `sweep-r9.txt` | r9: the view of the root that is farthest from solved is searched as the state's own view, the one every child is tested with first; of two views equally far, the one whose follower is farther. The other two keep their cyclic order, so this is the search of the rotated cube, and the faces are turned back when the answer is found. `make gates`: the first test prunes 61.2% of the children instead of 57.9% | loop cost in the model, worst and mean over all states: 29,807 and 10,280 with the state's own view first; 29,139 and 10,021 with the first of the farthest views; 23,563 and 10,011 with the tie rule | 13,377 | 26,787 |
 | `sweep-r10.txt` | r10: the walk home has one block of code per face, like the search: the turn is a load with a fixed offset, and no face offset and table address are stepped | worst state: the three walks take 1,560 instructions, 12 instead of 13 for each of about 90 keys tried, and less around each face and step | 13,169 | 26,580 |
+| `sweep-r11.txt` | r11: main keeps the input string and the buffer for the rotated strings in registers; `root_dist` returns through `a7`, so `solve` does not save `ra`, and takes the constant 1 from `solve`; `replay` reads the solved row that `solve` stored | 13 instructions a run, 11 instructions of code | 13,156 | 26,567 |
 
 r7, r8 and r9 also change `ida.c`, so gcc has new figures on the worst
 state of the assembly: 149,930 at r7, 119,709 at r8 and 97,416 at r9
