@@ -34,8 +34,9 @@
 .data
 # No .align anywhere: it means 2^n bytes to GNU as but n bytes to Ripes.
 # Instead every block keeps the next one aligned: cases.s is a multiple of
-# 16 bytes, tables.s of 4, and the names, messages and pair_base below add
-# up to 76, so the words render.s appends start on a 4-byte boundary. The
+# 16 bytes, tables.s of 4, and the names, messages, pair_base and farther
+# below add up to 84, so the words render.s appends start on a 4-byte
+# boundary. The
 # rows of `pattern` hold words, so they rely on this too.
 .include "cases.s"
 .include "tables.s"
@@ -50,6 +51,9 @@ msg_fail:    .string "  FAIL\n"
 msg_invalid: .string " -> invalid\n"
 # pair_base[i] + j - i - 1 numbers the pairs i < j of 6 positions, 0..14.
 pair_base:   .byte 0, 5, 9, 12, 14, 0, 0, 0
+# farther[v - u + 2]: a key with value u turns into one with value v, both
+# modulo 3; the key is 1 farther, 0 as far, or -1 (255) closer.
+farther:     .byte 1, 255, 0, 1, 255, 0, 0, 0
 
 .bss
 # One 32-byte slot per depth, 0..11, and two in front of the root's. The
@@ -280,88 +284,44 @@ coords_ranked:
     jalr zero, ra, 0
 
 # root_dist: a2 = pattern row, a5 = orientation offset -> a0 = the distance
-# of that key, a1 = the distance modulo 3. Walks home: a neighbour one closer
-# is one whose value is one less modulo 3, and it is never on the face of
-# the step before. One block per face, as in the search. Needs s5 s6 s7 =
-# orient_turn of R, B, D, s8 = the solved row and t3 = 1; returns through a7.
+# of that key, a1 = the distance modulo 3. The key is turned until its
+# orientation is home, each time by the quarter turn that orient_turn names
+# for the orientation (bytes 96.. of its block: the offset after the turn,
+# and 32 * the face); the last byte of a row is the distance of its code
+# there. On the way the values modulo 3 tell how the distance changes: a
+# quarter turn changes it by at most 1. Needs s5 = orient_turn and t2 =
+# farther; returns through a7.
 root_dist:
-    li   a0, 0
-    li   a4, -1                 # the face of the step before
     srli t0, a5, 5
     add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
     srl  t0, t0, a5             # by the low 5 bits
     andi a1, t0, 3
-    mv   t5, a1
-root_step:
-    bne  a2, s8, root_search
-    beqz a5, root_done
-root_search:
-    addi t5, t5, -1             # the value to look for
-    bgez t5, root_R
-    li   t5, 2
-root_R:
-    beqz a4, root_B
-    mv   a3, a2
-    mv   a6, a5
-    li   t4, 3
-root_turn_R:
-    lw   a3, 0(a3)
-    add  t0, s5, a6
-    lhu  a6, 0(t0)
-    srli t0, a6, 5
-    add  t0, t0, a3
+    mv   t5, a1                 # the value before the next turn
+    li   a0, 0                  # how much farther the key is by now
+    beqz a5, root_home
+root_turn:
+    add  t0, s5, a5
+    lhu  t1, 96(t0)
+    andi t0, t1, 96
+    srli t0, t0, 3              # 4 * face: where the row keeps that turn
+    add  t0, t0, a2
+    lw   a2, 0(t0)
+    andi a5, t1, -97            # the offset without the face
+    srli t0, a5, 5
+    add  t0, t0, a2
     lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a6             # by the low 5 bits
+    srl  t0, t0, a5             # by the low 5 bits
     andi t0, t0, 3
-    beq  t0, t5, root_closer_R
-    addi t4, t4, -1
-    bnez t4, root_turn_R
-root_B:
-    beq  a4, t3, root_D
-    mv   a3, a2
-    mv   a6, a5
-    li   t4, 3
-root_turn_B:
-    lw   a3, 4(a3)
-    add  t0, s6, a6
-    lhu  a6, 0(t0)
-    srli t0, a6, 5
-    add  t0, t0, a3
-    lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a6             # by the low 5 bits
-    andi t0, t0, 3
-    beq  t0, t5, root_closer_B
-    addi t4, t4, -1
-    bnez t4, root_turn_B
-root_D:
-    mv   a3, a2                 # one of the faces has a closer neighbour
-    mv   a6, a5
-root_turn_D:
-    lw   a3, 8(a3)
-    add  t0, s7, a6
-    lhu  a6, 0(t0)
-    srli t0, a6, 5
-    add  t0, t0, a3
-    lw   t0, 12(t0)             # the word of 16 values
-    srl  t0, t0, a6             # by the low 5 bits
-    andi t0, t0, 3
-    beq  t0, t5, root_closer_D
-    j    root_turn_D
-root_closer_D:
-    li   a4, 2
-    j    root_closer
-root_closer_B:
-    li   a4, 1
-    j    root_closer
-root_closer_R:
-    li   a4, 0
-root_closer:
-    mv   a2, a3
-    mv   a5, a6
-    addi a0, a0, 1
-    j    root_step
-root_done:
+    sub  t1, t0, t5             # -2..2
+    add  t1, t1, t2
+    lb   t1, 2(t1)              # 1 farther, 0 the same, -1 closer
+    add  a0, a0, t1
+    mv   t5, t0
+    bnez a5, root_turn
+root_home:
+    lbu  t0, 195(a2)            # the distance at the home orientation
+    sub  a0, t0, a0
     jalr zero, a7, 0
 
 # solve: the first slot in front of frames holds the three views of the
@@ -396,6 +356,7 @@ solve:
     sb   t0, -13(s9)            # byte 19 of the slot in front of the root's
     li   t3, 1
     li   gp, 16                 # the rows of next_state below 16: slack 0
+    la   t2, farther            # for root_dist
     li   s10, 0                 # the largest of the three distances
     mv   s4, s9                 # s4 t6: the view's row and orientation
     mv   t6, s9

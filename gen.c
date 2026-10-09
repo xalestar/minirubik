@@ -54,7 +54,7 @@ enum {
     ROW_BYTES = 183,  /* 729 values of 2 bits; the last byte holds one */
     ROW_STRIDE = 196, /* tables.s: 3 addresses, the row, 1 pad */
     ROW_WORDS = 46,   /* the row and its pad, as the words the assembly reads */
-    TURN_HALVES = ROW_WORDS * 64 - 16, /* orient_turn in tables.s */
+    TURN_HALVES = ROW_WORDS * 64, /* orient_turn in tables.s */
     SLACKS = 8,       /* slack 0..7; a key is at most 4 below its states */
     SEARCH_STATES = SLACKS * 3
 };
@@ -62,6 +62,10 @@ enum {
 static uint16_t perm_turn[3][PERMUTATIONS], orient_turn[3][ORIENTATIONS];
 static uint16_t block_turn[3][BLOCKS], block_solved;
 static uint8_t pattern_dist[BLOCKS][ORIENTATIONS];
+/* For every orientation but home, the face whose quarter turn brings it one
+ * quarter turn closer to home, and how many quarter turns home is away.
+ */
+static uint8_t orient_home[ORIENTATIONS], orient_far[ORIENTATIONS];
 static uint8_t pattern_mod3[BLOCKS][ROW_BYTES];
 static int8_t next_state[SEARCH_STATES][4];
 /* The 120-degree rotation about the diagonal through the fixed corner, as a
@@ -257,6 +261,44 @@ static uint8_t *exact_distances(void)
     return dist;
 }
 
+/* The way home for an orientation: BFS from home over the turns taken
+ * backwards. H2: every orientation is reached, and the face named for it
+ * leads to an orientation one quarter turn closer.
+ */
+static int build_orient_home(void)
+{
+    static uint16_t queue[ORIENTATIONS];
+    uint32_t head = 0, tail = 1;
+    uint8_t max = 0;
+    memset(orient_far, UINT8_MAX, sizeof orient_far);
+    orient_far[0] = 0;
+    queue[0] = 0;
+    while (head < tail) {
+        uint16_t here = queue[head++];
+        for (uint16_t from = 0; from < ORIENTATIONS; ++from)
+            for (uint8_t face = 0; face < 3; ++face)
+                if (orient_turn[face][from] == here &&
+                    orient_far[from] == UINT8_MAX) {
+                    orient_far[from] = (uint8_t) (orient_far[here] + 1U);
+                    orient_home[from] = face;
+                    queue[tail++] = from;
+                }
+    }
+    for (uint16_t o = 1; o < ORIENTATIONS; ++o) {
+        if (orient_far[o] == UINT8_MAX ||
+            orient_far[orient_turn[orient_home[o]][o]] != orient_far[o] - 1) {
+            fprintf(stderr, "H2 failed for orient_home at %u\n", o);
+            return 0;
+        }
+        if (orient_far[o] > max)
+            max = orient_far[o];
+    }
+    printf("H2 orient_home: %u orientations, home 0, at most %u quarter turns "
+           "from home\n",
+           tail, max);
+    return tail == ORIENTATIONS;
+}
+
 /* H2 for the distance table: fully populated, solved entry zero, expected
  * max.
  */
@@ -425,9 +467,10 @@ static uint32_t orient_offset(uint32_t o)
 static uint8_t mod3_word_at(uint16_t b, uint16_t o)
 {
     uint32_t offset = orient_offset(o), at = offset >> 5, word = 0;
-    for (uint32_t i = 0; i < 4; ++i)
-        if (at + i < ROW_BYTES)
-            word |= (uint32_t) pattern_mod3[b][at + i] << (8 * i);
+    for (uint32_t i = 0; i < 4; ++i) /* the byte after the row is not 0 */
+        word |= (uint32_t) (at + i < ROW_BYTES ? pattern_mod3[b][at + i]
+                                               : pattern_dist[b][0])
+                << (8 * i);
     return word >> (offset & 31U) & 3U;
 }
 
@@ -575,6 +618,13 @@ static int write_header(const char *path)
             block_solved, KIND_PAIR, KIND_HOME);
     emit_c_u16(out, "orient_turn", &orient_turn[0][0], 3, ORIENTATIONS);
     emit_c_u16(out, "block_turn", &block_turn[0][0], 3, BLOCKS);
+    fprintf(out, "static const uint8_t orient_home[%u] = {", ORIENTATIONS);
+    for (uint32_t o = 0; o < ORIENTATIONS; ++o)
+        fprintf(out, "%s%u", o ? "," : "", orient_home[o]);
+    fprintf(out, "};\nstatic const uint8_t home_dist[%u] = {", BLOCKS);
+    for (uint32_t b = 0; b < BLOCKS; ++b)
+        fprintf(out, "%s%u", b ? "," : "", pattern_dist[b][0]);
+    fputs("};\n", out);
     fprintf(out, "static const uint8_t pattern_mod3[%u][%u] = {\n", BLOCKS,
             ROW_BYTES);
     for (uint32_t b = 0; b < BLOCKS; ++b) {
@@ -623,14 +673,30 @@ static uint32_t state_offset(int row)
     return 16U * (uint32_t) (row / 3) + 4U * (uint32_t) (row % 3);
 }
 
+/* Entry i of orient_turn as the assembly has it (see write_asm). */
+static uint32_t turn_half(uint32_t i)
+{
+    uint32_t face = i % 64 / 16, o = i / 64 * 16 + i % 16;
+    if (o >= ORIENTATIONS)
+        return 0;
+    if (face < 3)
+        return orient_offset(orient_turn[face][o]);
+    return o ? orient_offset(orient_turn[orient_home[o]][o]) |
+                   (uint32_t) orient_home[o] << 5
+             : 0;
+}
+
 /* The assembly keeps an orientation rank as orient_offset: a looked-up
  * offset is used as is to index orient_turn, to find the word of a pattern
  * row and to shift it. orient_turn is laid out for these offsets: a block of
  * 128 bytes for every 16 ranks, with the 16 entries of R at byte 0, of B at
- * 32 and of D at 64; the last 32 bytes of a block are not used. A block code
- * is stored as the address of its row, and each row starts with the
+ * 32 and of D at 64. The last 32 bytes of a block are the way home: for
+ * each rank the offset after the quarter turn that orient_home names, with
+ * the face of that turn in bits 5 and 6, which an offset leaves 0. A block
+ * code is stored as the address of its row, and each row starts with the
  * addresses of the three rows its code turns into, so advancing a block code
- * is one load. next_state is stored as state_offset, the offset of a row of
+ * is one load. The byte after the 2-bit values of a row is the distance of
+ * the row's code at the home orientation, where a walk home ends. next_state is stored as state_offset, the offset of a row of
  * itself, with 255 for -1; the fourth row of every slack is not used.
  */
 static int write_asm(const char *path)
@@ -643,22 +709,20 @@ static int write_asm(const char *path)
           "# Ripes has no .rodata, so the read-only tables live in .data.\n"
           ".data\n"
           "# [32 * face + offset] -> offset after one quarter turn, where "
-          "the offset of\n# rank o is 128 * (o / 16) + 2 * (o % 16); bytes "
-          "96..127 of a block are unused\n"
+          "the offset of\n# rank o is 128 * (o / 16) + 2 * (o % 16); [96 + "
+          "offset] -> the offset after the\n# quarter turn that brings o "
+          "closer to home, plus 32 * the face of that turn\n"
           "orient_turn:\n",
           out);
-    for (uint32_t i = 0; i < TURN_HALVES; ++i) {
-        uint32_t face = i % 64 / 16, o = i / 64 * 16 + i % 16;
-        value[i] = face < 3 && o < ORIENTATIONS
-                       ? orient_offset(orient_turn[face][o])
-                       : 0;
-    }
+    for (uint32_t i = 0; i < TURN_HALVES; ++i)
+        value[i] = turn_half(i);
     emit_s(out, "    .half ", value, TURN_HALVES);
     fprintf(out,
             "# one %u-byte row per block code: the rows of the code after a "
             "quarter turn\n"
             "# of R, B, D, then the distance modulo 3 of each orientation, "
-            "2 bits each\n"
+            "2 bits each;\n# the last byte is the distance at the home "
+            "orientation\n"
             "pattern:\n",
             ROW_STRIDE);
     for (uint32_t b = 0; b < BLOCKS; ++b) {
@@ -667,7 +731,7 @@ static int write_asm(const char *path)
                 ROW_STRIDE * block_turn[2][b]);
         for (uint32_t i = 0; i < ROW_BYTES; ++i)
             value[i] = pattern_mod3[b][i];
-        value[ROW_BYTES] = 0;
+        value[ROW_BYTES] = pattern_dist[b][0];
         emit_s(out, "    .byte ", value, ROW_BYTES + 1);
     }
     fputs("# [16 * slack + 4 * (distance mod 3) + value] -> the same offset "
@@ -752,20 +816,16 @@ static int check_asm(const char *path)
             uint32_t b = i / (3 + ROW_BYTES + 1), at = i % (3 + ROW_BYTES + 1);
             switch (table) {
             case 0:
-                expect = i % 64 / 16 < 3 && i / 64 * 16 + i % 16 < ORIENTATIONS
-                             ? orient_offset(orient_turn[i % 64 / 16]
-                                                        [i / 64 * 16 + i % 16])
-                             : 0;
+                expect = i < TURN_HALVES ? turn_half(i) : 0;
                 break;
             case 1:
                 if (word != (at < 3))
                     expect = UINT32_MAX;
                 else if (at < 3)
                     expect = b < BLOCKS ? ROW_STRIDE * block_turn[at][b] : 0;
-                else
-                    expect = b < BLOCKS && at < 3 + ROW_BYTES
-                                 ? pattern_mod3[b][at - 3]
-                                 : 0;
+                else if (b < BLOCKS)
+                    expect = at < 3 + ROW_BYTES ? pattern_mod3[b][at - 3]
+                                                : pattern_dist[b][0];
                 break;
             case 2:
                 expect = i < SLACKS * 16 && i % 16 < 12 &&
@@ -813,6 +873,7 @@ int main(void)
     }
     uint32_t pattern_reached = pattern_bfs();
     if (!check_turns("orient_turn", &orient_turn[0][0], ORIENTATIONS) ||
+        !build_orient_home() ||
         !check_turns("block_turn", &block_turn[0][0], BLOCKS) ||
         !check_pattern_dist(pattern_reached) || !check_rotation() ||
         !pack_and_check())

@@ -5,8 +5,8 @@
  * the search returns a path whose length equals the exact distance (H3), and
  * that path, applied by solver.c's own apply_move rather than through the
  * generated tables, reaches solved. Before that, for every key of the
- * pattern database: the distance ida.c finds by walking home equals the BFS
- * distance of the key. Also reports operation counts over the distance-11
+ * pattern database: the distance ida.c finds by turning its orientation home
+ * equals the BFS distance of the key. Also reports operation counts over the distance-11
  * states for the stage 3 argument.
  */
 #define main solver_main
@@ -175,8 +175,8 @@ int main(void)
     printf("distance 11, mean per state: %.1f children pass the three views "
            "with no slack in any and are cut: one move more is needed\n",
            (double) cut_tight / deepest);
-    printf("distance 11: nodes expanded mean %.0f, worst %llu; %.0f keys "
-           "tried on the way home from the three root keys\n",
+    printf("distance 11: nodes expanded mean %.0f, worst %llu; %.1f quarter "
+           "turns on the way home from the three root keys\n",
            (double) passed / deepest, (unsigned long long) worst_passed,
            (double) tries / deepest);
     printf("distance 11, mean per state: %.0f quarter turns of a rotated "

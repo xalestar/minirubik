@@ -154,36 +154,28 @@ static uint8_t mod3(uint16_t b, uint16_t o)
     return pattern_mod3[b][o >> 2] >> ((o & 3U) << 1) & 3U;
 }
 
-/* The distance of a key, by walking home: a neighbour one closer is the one
- * whose value is one less modulo 3, since neighbours differ by at most 1.
- * The face of the step before is not tried: two turns of one face are one
- * turn, which cannot bring a key two closer.
+/* The distance of a key. The key is turned until its orientation is home,
+ * each time by the quarter turn that orient_home names for the orientation;
+ * home_dist has the distance of every block code there. On the way the
+ * values modulo 3 tell how the distance changes: a quarter turn changes it
+ * by at most 1.
  */
 static uint8_t root_dist(uint16_t b, uint16_t o)
 {
-    uint8_t d = 0, v = mod3(b, o), last = NO_FACE;
-    while (b != BLOCK_SOLVED || o) {
-        uint8_t want = v ? (uint8_t) (v - 1U) : 2, found = 0;
-        for (uint8_t face = 0; face < 3 && !found; ++face) {
-            uint16_t nb = b, no = o;
-            if (face == last)
-                continue;
-            for (uint8_t t = 0; t < 3 && !found; ++t) {
-                nb = block_turn[face][nb];
-                no = orient_turn[face][no];
-                COUNT(root_tries);
-                if (mod3(nb, no) == want) {
-                    b = nb;
-                    o = no;
-                    last = face;
-                    found = 1;
-                }
-            }
-        }
-        v = want;
-        ++d;
+    /* by (value after - value before) + 2: farther, closer, same, ... */
+    static const int8_t change[5] = {1, -1, 0, 1, -1};
+    uint8_t v = mod3(b, o);
+    int8_t farther = 0;
+    while (o) {
+        uint8_t face = orient_home[o];
+        b = block_turn[face][b];
+        o = orient_turn[face][o];
+        uint8_t w = mod3(b, o);
+        farther = (int8_t) (farther + change[w - v + 2]);
+        v = w;
+        COUNT(root_tries);
     }
-    return d;
+    return (uint8_t) (home_dist[b] - farther);
 }
 
 /* Writes moves as face * 3 + turn into path; returns the solution length.
