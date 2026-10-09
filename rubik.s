@@ -60,7 +60,10 @@ farther:     .byte 1, 255, 0, 1, 255, 0, 0, 0
 # first of the two holds the three views of the state as given (bytes
 # 0..17) and their distances (bytes 20 24 28); slot 0 holds the views with
 # the farthest first. The second is the parent the root is popped to: no
-# face, and deepen as the place to go on.
+# face (16), and deepen as the place to go on. Its first bytes keep the
+# first move with the most nodes below it in this iteration:
+#   0 its row and 10 its orientation offset in the first view (the child's)
+#   4 where the search went on after it     8 the number of nodes
 #   0 4 8     the pattern row of this node in each view (words)
 #  12 14 16   its orientation offset in each view
 #  18 turns left on the face of the child being searched (3..1)
@@ -345,8 +348,10 @@ root_home:
 #   t4 turns left on this face    t6 the parent's face, then this face for
 #   a child that passes           t5 where a child that is cut goes back to
 #   t3 a1 gp  the constants 1, 2 and 16     t0 t1 scratch    tp the bound
+#   ra the nodes below the first move that is being searched
 #   a0 turns left when the rotated views were last turned
 solve:
+    sw   ra, 24(sp)             # ra counts the nodes below a first move
     la   s5, orient_turn
     addi s6, s5, ORIENT_FACE
     addi s7, s6, ORIENT_FACE
@@ -354,12 +359,11 @@ solve:
     li   t0, BLOCK_SOLVED
     add  s8, s8, t0
     sw   s8, 20(sp)             # replay compares with it
-    li   t0, 3
-    sb   t0, -17(s9)            # the slot in front of the root's: no face,
-    la   t0, deepen             # and a pop of the root goes on at deepen
-    sw   t0, -4(s9)
     li   t3, 1
     li   gp, 16                 # the rows of next_state below 16: slack 0
+    sb   gp, -17(s9)            # the slot in front of the root's: no face,
+    la   t0, deepen             # and a pop of the root goes on at deepen
+    sw   t0, -4(s9)
     la   t2, farther            # for root_dist
     li   s10, 0                 # the largest of the three distances
     mv   s4, s9                 # s4 t6: the view's row and orientation
@@ -446,21 +450,51 @@ solve_first:
     mv   tp, s10                # the bound
     li   a1, 2
     j    iteration
+# With 11 moves an answer is certain, and it pays to start with a good
+# first move: the one with the most nodes below it when the bound was 10 is
+# most often the first move of an answer. The search starts at the test of
+# that first move, 40 bytes before the place it went on from, and goes on
+# with the first moves after it. If they all fail, the root is popped to
+# deepen with the bound at 11: then all first moves are searched in order.
 deepen:
-    addi tp, tp, 1
-    addi s8, s8, FRAME
-    lw   s0, 20(s9)             # one more move: slack + 1 in each view
+    li   t0, 11
+    lw   s0, 20(s9)
     lw   s1, 24(s9)
     lw   s2, 28(s9)
-    addi s0, s0, 16
+    beq  tp, t0, iteration
+    addi tp, tp, 1
+    addi s8, s8, FRAME
+    addi s0, s0, 16             # one more move: slack + 1 in each view
     addi s1, s1, 16
     addi s2, s2, 16
+    bne  tp, t0, iteration
+    lhu  t1, -28(s9)
+    beqz t1, iteration          # no first move had a node below it
+    sw   s0, 20(s9)
+    sw   s1, 24(s9)
+    sw   s2, 28(s9)
+    sh   zero, -28(s9)
+    mv   s4, s9
+    mv   t6, gp
+    li   ra, 0
+    lw   a2, -36(s9)            # the first view after that first move,
+    lhu  a5, -26(s9)
+    lw   a3, 4(s9)              # the rotated views of the root
+    lw   a4, 8(s9)
+    lhu  a6, 14(s9)
+    lhu  a7, 16(s9)
+    li   a0, 4
+    lw   t0, -32(s9)
+start_there:
+    jalr zero, t0, -40
 iteration:
     sw   s0, 20(s9)
     sw   s1, 24(s9)
     sw   s2, 28(s9)
+    sh   zero, -28(s9)          # no first move has nodes below it yet
+    li   ra, 0
     mv   s4, s9
-    li   t6, 3                  # the root has no parent face
+    mv   t6, gp                 # the root has no parent face
 # One block per face: the node's coordinates are loaded, then the state's
 # own view is turned three times, each turn with its own copy of the test.
 # A child that fails it costs nothing more. A child that passes goes
@@ -642,12 +676,24 @@ pop:
     lbu  a0, 18(s4)             # the child had all three views up to date
     lw   t5, 32(s4)
     lbu  t6, -17(s4)            # the face of the slot before
+    beq  t6, gp, popped_first   # none: a first move failed
 back:
     jalr zero, t5, 0            # the next turn, the next face, or deepen
+popped_first:
+    lhu  t0, -28(s9)            # the most nodes below a first move so far
+    bgeu t0, ra, popped_fewer
+    sh   ra, -28(s9)
+    sw   t5, -32(s9)
+    sw   a2, -36(s9)
+    sh   a5, -26(s9)
+popped_fewer:
+    li   ra, 0
+    jalr zero, t5, 0
 passed:
     sb   t4, 18(s4)             # this move, for the answer
     sb   t6, 19(s4)
     sw   t5, 32(s4)             # where to go on if the child's subtree fails
+    addi ra, ra, 1
     addi s4, s4, FRAME          # descend: the child gets its own slot
     sw   a2, 0(s4)
     sw   a3, 4(s4)
@@ -785,6 +831,7 @@ found_kept:
     bgeu s4, t0, found_face
 found_length:
     mv   a0, tp
+    lw   ra, 24(sp)
 solve_done:
     jalr zero, ra, 0
 

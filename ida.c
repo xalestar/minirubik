@@ -216,14 +216,25 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
         if (++k == VIEWS)
             k = 0;
     }
+    /* When the bound is MAX_DEPTH an answer is certain, and it pays to
+     * start with a good first move: the one that had the most nodes below
+     * it in the iteration before is most often the first move of an answer.
+     * The search starts at that first move and goes on with those after it;
+     * if they all fail, all first moves are searched in order.
+     */
+    uint8_t first_face = NO_FACE, first_turn = 0;
     for (;; ++bound) {
-        int depth = 0;
+        uint8_t most_face = NO_FACE, most_turn = 0;
+        uint16_t most = 0, below = 0;
         /* row 3 * slack + distance mod 3; the table has the latter */
         for (int k = 0; k < VIEWS; ++k) {
             uint8_t slack = (uint8_t) (bound - dist[k]);
             stack[0].s[k] = (int8_t) ((slack << 1) + slack +
                                       mod3(stack[0].b[k], stack[0].o[k]));
         }
+        for (int only = bound == MAX_DEPTH && first_face != NO_FACE, all = 0;
+             !all; all = !only, only = 0) {
+        int depth = 0;
         stack[0].face = NO_FACE;
         COUNT(expanded);
         for (;;) {
@@ -241,6 +252,14 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
                 if (face >= NO_FACE) {
                     if (!depth--)
                         break;
+                    if (!depth) { /* a first move failed */
+                        if (below > most) {
+                            most = below;
+                            most_face = stack[0].face;
+                            most_turn = stack[0].turn;
+                        }
+                        below = 0;
+                    }
                     continue;
                 }
                 f->face = face;
@@ -254,6 +273,11 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
             next->b[0] = block_turn[f->face][next->b[0]];
             next->o[0] = orient_turn[f->face][next->o[0]];
             ++f->behind;
+            if (!depth && only > 0) { /* turn past the first moves before it */
+                if (f->face != first_face || f->turn != first_turn)
+                    continue;
+                only = -1;
+            }
             COUNT(generated);
             int8_t s = next_state[f->s[0]][mod3(next->b[0], next->o[0])];
             if (s < 0) {
@@ -296,9 +320,13 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
                 return bound;
             }
             COUNT(expanded);
+            ++below;
             ++depth;
             next->face = NO_FACE;
         }
+        }
+        first_face = most_face;
+        first_turn = most_turn;
     }
 }
 
