@@ -6,8 +6,8 @@
  * that path, applied by solver.c's own apply_move rather than through the
  * generated tables, reaches solved. Before that, for every key of the
  * pattern database: the distance ida.c finds by turning its orientation home
- * equals the BFS distance of the key. Also reports operation counts over the distance-11
- * states for the stage 3 argument.
+ * equals the BFS distance of the key. Also reports operation counts over the
+ * distance-11 states for the stage 3 argument.
  */
 #define main solver_main
 #include "solver.c"

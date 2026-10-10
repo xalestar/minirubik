@@ -525,10 +525,11 @@ read the `ida.c` and `tables.h` of r11 (`d1b8fed`); `r11-keys.c` needs only
   states, a quarter turn in 143 to 176. On the walk home the order quarter,
   back, half tries 3.36 keys a step against 3.43 as built. Of the 107 pops
   of the worst state, 28 follow a third turn (15.1 of 43.8 on average).
-* A host interpreter of RV32I (not kept as a file; the linked image as in
-  `reference_ripes_cli`: `riscv64-elf-ld --no-relax -Ttext=0
-  -Tdata=0x10000000`) gives the Ripes count of all 2,644 states of r11
-  exactly, in 0.13 s. It was used to try changes before a Ripes sweep.
+* A host interpreter of RV32I (not kept as a file) gives the Ripes count
+  of all 2,644 states of r11 exactly, in 0.13 s. It runs `rubik-cli.s`
+  assembled with `riscv64-elf-as` and linked with `riscv64-elf-ld
+  --no-relax -Ttext=0 -Tdata=0x10000000`, and adds 1 to its count, as
+  `RV32_ISS` does. It was used to try changes before a Ripes sweep.
 
 ### Round 2: counted and not built
 

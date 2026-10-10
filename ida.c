@@ -234,96 +234,99 @@ static int solve(const uint16_t *vb, const uint16_t *vo, uint8_t *path)
         }
         for (int only = bound == MAX_DEPTH && first_face != NO_FACE, all = 0;
              !all; all = !only, only = 0) {
-        int depth = 0;
-        stack[0].face = NO_FACE;
-        COUNT(expanded);
-        for (;;) {
-            /* the child is built in the next frame, which is its own if the
-             * search descends, and the previous turn of the face if not */
-            frame_t *f = &stack[depth], *next = f + 1;
-            int k;
-            if (f->face != NO_FACE && f->turn < 2) {
-                ++f->turn;
-            } else {
-                /* next face, skipping the one the parent just turned */
-                uint8_t face = (uint8_t) (f->face + 1U) & 3U;
-                if (depth && face == stack[depth - 1].face)
-                    ++face;
-                if (face >= NO_FACE) {
-                    if (!depth--)
-                        break;
-                    if (!depth) { /* a first move failed */
-                        if (below > most) {
-                            most = below;
-                            most_face = stack[0].face;
-                            most_turn = stack[0].turn;
-                        }
-                        below = 0;
-                    }
-                    continue;
-                }
-                f->face = face;
-                f->turn = 0;
-                f->behind = 0;
-                for (k = 0; k < VIEWS; ++k) {
-                    next->b[k] = f->b[k];
-                    next->o[k] = f->o[k];
-                }
-            }
-            next->b[0] = block_turn[f->face][next->b[0]];
-            next->o[0] = orient_turn[f->face][next->o[0]];
-            ++f->behind;
-            if (!depth && only > 0) { /* turn past the first moves before it */
-                if (f->face != first_face || f->turn != first_turn)
-                    continue;
-                only = -1;
-            }
-            COUNT(generated);
-            int8_t s = next_state[f->s[0]][mod3(next->b[0], next->o[0])];
-            if (s < 0) {
-                COUNT(pruned[0]);
-                continue;
-            }
-            next->s[0] = s;
-            /* the rotated views turn the rotated face */
-            for (; f->behind; --f->behind)
-                for (uint8_t k2 = 1, face = sym_face[f->face]; k2 < VIEWS;
-                     ++k2, face = sym_face[face]) {
-                    next->b[k2] = block_turn[face][next->b[k2]];
-                    next->o[k2] = orient_turn[face][next->o[k2]];
-                    COUNT(rotated_turns);
-                }
-            for (k = 1; k < VIEWS; ++k) {
-                s = next_state[f->s[k]][mod3(next->b[k], next->o[k])];
-                if (s < 0)
-                    break;
-                next->s[k] = s;
-            }
-            if (k < VIEWS) {
-                COUNT(pruned[k]);
-                continue;
-            }
-            /* rows 0..2 are slack 0 */
-            if (next->s[0] < 3 && next->s[1] < 3 && next->s[2] < 3) {
-                if (depth + 1 != bound) {
-                    COUNT(pruned_tight);
-                    continue;
-                }
-                /* back to the faces of the cube as given: sym_face takes a
-                 * face to the one before it, so add `lead` */
-                for (int i = 0; i <= depth; ++i) {
-                    uint8_t face = (uint8_t) (stack[i].face + lead);
-                    if (face >= 3)
-                        face -= 3;
-                    path[i] = (uint8_t) ((face << 1) + face + stack[i].turn);
-                }
-                return bound;
-            }
+            int depth = 0;
+            stack[0].face = NO_FACE;
             COUNT(expanded);
-            ++below;
-            ++depth;
-            next->face = NO_FACE;
-        }
+            for (;;) {
+                /* the child is built in the next frame, which is its own if
+                 * the search descends, and the previous turn of the face if
+                 * not */
+                frame_t *f = &stack[depth], *next = f + 1;
+                int k;
+                if (f->face != NO_FACE && f->turn < 2) {
+                    ++f->turn;
+                } else {
+                    /* next face, skipping the one the parent just turned */
+                    uint8_t face = (uint8_t) (f->face + 1U) & 3U;
+                    if (depth && face == stack[depth - 1].face)
+                        ++face;
+                    if (face >= NO_FACE) {
+                        if (!depth--)
+                            break;
+                        if (!depth) { /* a first move failed */
+                            if (below > most) {
+                                most = below;
+                                most_face = stack[0].face;
+                                most_turn = stack[0].turn;
+                            }
+                            below = 0;
+                        }
+                        continue;
+                    }
+                    f->face = face;
+                    f->turn = 0;
+                    f->behind = 0;
+                    for (k = 0; k < VIEWS; ++k) {
+                        next->b[k] = f->b[k];
+                        next->o[k] = f->o[k];
+                    }
+                }
+                next->b[0] = block_turn[f->face][next->b[0]];
+                next->o[0] = orient_turn[f->face][next->o[0]];
+                ++f->behind;
+                /* turn past the first moves before it */
+                if (!depth && only > 0) {
+                    if (f->face != first_face || f->turn != first_turn)
+                        continue;
+                    only = -1;
+                }
+                COUNT(generated);
+                int8_t s = next_state[f->s[0]][mod3(next->b[0], next->o[0])];
+                if (s < 0) {
+                    COUNT(pruned[0]);
+                    continue;
+                }
+                next->s[0] = s;
+                /* the rotated views turn the rotated face */
+                for (; f->behind; --f->behind)
+                    for (uint8_t k2 = 1, face = sym_face[f->face]; k2 < VIEWS;
+                         ++k2, face = sym_face[face]) {
+                        next->b[k2] = block_turn[face][next->b[k2]];
+                        next->o[k2] = orient_turn[face][next->o[k2]];
+                        COUNT(rotated_turns);
+                    }
+                for (k = 1; k < VIEWS; ++k) {
+                    s = next_state[f->s[k]][mod3(next->b[k], next->o[k])];
+                    if (s < 0)
+                        break;
+                    next->s[k] = s;
+                }
+                if (k < VIEWS) {
+                    COUNT(pruned[k]);
+                    continue;
+                }
+                /* rows 0..2 are slack 0 */
+                if (next->s[0] < 3 && next->s[1] < 3 && next->s[2] < 3) {
+                    if (depth + 1 != bound) {
+                        COUNT(pruned_tight);
+                        continue;
+                    }
+                    /* back to the faces of the cube as given: sym_face takes a
+                     * face to the one before it, so add `lead` */
+                    for (int i = 0; i <= depth; ++i) {
+                        uint8_t face = (uint8_t) (stack[i].face + lead);
+                        if (face >= 3)
+                            face -= 3;
+                        path[i] =
+                            (uint8_t) ((face << 1) + face + stack[i].turn);
+                    }
+                    return bound;
+                }
+                COUNT(expanded);
+                ++below;
+                ++depth;
+                next->face = NO_FACE;
+            }
         }
         first_face = most_face;
         first_turn = most_turn;
